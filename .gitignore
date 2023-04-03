@@ -5,8 +5,8 @@ training-runs/
 out/
 *.png
 *.pt
-datasets/
 *.zip
 __pycache__/
+datasets/
 *.pyc
 *_out/

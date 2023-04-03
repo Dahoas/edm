@@ -113,6 +113,6 @@
   "kimg_per_tick": 25,
   "snapshot_ticks": 25,
   "state_dump_ticks": 500,
-  "seed": 1537889991,
-  "run_dir": "ffhq-training-runs/00064-ffhq-96x96_ffhq-80x80_ffhq-64x64_ffhq-48x48_ffhq-32x32-uncond-ddpmpp-edm-gpus8-batch256-fp32"
+  "seed": 427335721,
+  "run_dir": "ffhq-training-runs/00066-ffhq-96x96_ffhq-80x80_ffhq-64x64_ffhq-48x48_ffhq-32x32-uncond-ddpmpp-edm-gpus8-batch256-fp32"
 }
