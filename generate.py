@@ -18,7 +18,7 @@ import torch
 import PIL.Image
 import dnnlib
 from torch_utils import distributed as dist
-
+from scipy.interpolate import interp2d
 #----------------------------------------------------------------------------
 # Proposed EDM sampler (Algorithm 2).
 
@@ -213,6 +213,26 @@ def parse_int_list(s):
 
 #----------------------------------------------------------------------------
 
+def bilinear_interpolation(images, new_height, new_width):
+    num, c, h, w = image.shape
+    x = np.linspace(0,1,num=h)
+    y = np.linspace(0,1,num=w)
+
+    x2 = np.linspace(0,1,num=new_height)
+    y2 = np.linspace(0,1,num=new_width)
+
+    upsampled_images = torch.zeros((num,c,new_height,new_width))
+
+    for i in range(num):
+        image = images[i]
+        for j in range(c):
+            cur = image[j]
+            f = interp2d(x,y,cur,kind='linear')
+
+            upsampled_images[i,j,:,:] = f(x2,y2)
+    return upsampled_images
+#----------------------------------------------------------------------------
+
 @click.command()
 @click.option('--network', 'network_pkl',  help='Network pickle filename', metavar='PATH|URL',                      type=str, required=True)
 @click.option('--outdir',                  help='Where to save the output images', metavar='DIR',                   type=str, required=True)
@@ -294,8 +314,12 @@ def main(network_pkl, img_resolution, outdir, subdirs, seeds, class_idx, max_bat
         sampler_fn = ablation_sampler if have_ablation_kwargs else edm_sampler
         images = sampler_fn(net, latents, class_labels, randn_like=rnd.randn_like, **sampler_kwargs)
 
+        up_sampled_noisy_images = bilinear_interpolation(images,64,64).to(device=device)
+        
+        up_sampled_images = sampler_fn(net,up_sampled_noisy_images,class_labels, randn_like=rnd.randn_like, **sampler_kwargs)
+
         # Save images.
-        images_np = (images * 127.5 + 128).clip(0, 255).to(torch.uint8).permute(0, 2, 3, 1).cpu().numpy()
+        images_np = (up_sampled_images * 127.5 + 128).clip(0, 255).to(torch.uint8).permute(0, 2, 3, 1).cpu().numpy()
         #os.makedirs(outdir, exist_ok=True)
         #np.save(os.path.join(outdir, "batch_{}".format(batch_seeds[0])), images_np)
         for seed, image_np in zip(batch_seeds, images_np):
