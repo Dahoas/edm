@@ -1,3 +1,3 @@
-torchrun --standalone --nnodes=1 --nproc_per_node=8 generate.py --outdir=ffhq_large_def_out --seeds=0-63 --batch=64 \
+torchrun --standalone --nnodes=1 --nproc_per_node=8 generate.py --outdir=ffhq_large_def_out --seeds=0-1 --batch=64 \
     --network ffhq-training-runs/network-snapshot-073382.pkl \
-    --img_resolution 32
+    --img_resolution 64

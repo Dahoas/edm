@@ -24,6 +24,7 @@ from scipy.interpolate import interp2d
 
 def edm_sampler(
     net, latents, class_labels=None, randn_like=torch.randn_like,
+    starting_step = -1,
     num_steps=18, sigma_min=0.002, sigma_max=80, rho=7,
     S_churn=0, S_min=0, S_max=float('inf'), S_noise=1,
 ):
@@ -37,10 +38,14 @@ def edm_sampler(
     t_steps = torch.cat([net.round_sigma(t_steps), torch.zeros_like(t_steps[:1])]) # t_N = 0
 
     # Main sampling loop.
-    x_next = latents.to(torch.float64) * t_steps[0]
+    x_next = latents
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])): # 0, ..., N-1
-        x_cur = x_next
+        if i < starting_step:
+            continue
 
+        if i == 0:
+            x_next = latents.to(torch.float64) * t_steps[0]
+        x_cur = x_next
         # Increase noise temporarily.
         gamma = min(S_churn / num_steps, np.sqrt(2) - 1) if S_min <= t_cur <= S_max else 0
         t_hat = net.round_sigma(t_cur + gamma * t_cur)
@@ -214,7 +219,7 @@ def parse_int_list(s):
 #----------------------------------------------------------------------------
 
 def bilinear_interpolation(images, new_height, new_width):
-    num, c, h, w = image.shape
+    num, c, h, w = images.shape
     x = np.linspace(0,1,num=h)
     y = np.linspace(0,1,num=w)
 
@@ -227,9 +232,9 @@ def bilinear_interpolation(images, new_height, new_width):
         image = images[i]
         for j in range(c):
             cur = image[j]
-            f = interp2d(x,y,cur,kind='linear')
+            f = interp2d(x,y,cur.to('cpu').numpy(),kind='linear')
 
-            upsampled_images[i,j,:,:] = f(x2,y2)
+            upsampled_images[i,j,:,:] = torch.tensor(f(x2,y2))
     return upsampled_images
 #----------------------------------------------------------------------------
 
@@ -313,27 +318,44 @@ def main(network_pkl, img_resolution, outdir, subdirs, seeds, class_idx, max_bat
         have_ablation_kwargs = any(x in sampler_kwargs for x in ['solver', 'discretization', 'schedule', 'scaling'])
         sampler_fn = ablation_sampler if have_ablation_kwargs else edm_sampler
         images = sampler_fn(net, latents, class_labels, randn_like=rnd.randn_like, **sampler_kwargs)
-
-        up_sampled_noisy_images = bilinear_interpolation(images,64,64).to(device=device)
         
-        up_sampled_images = sampler_fn(net,up_sampled_noisy_images,class_labels, randn_like=rnd.randn_like, **sampler_kwargs)
 
+
+        n = img_resolution; k = 2
+        # for i in range(1):
+        up_sampled_noisy_images = images
+        for i in range(k):
+            n*=2
+            up_sampled_noisy_images = bilinear_interpolation(up_sampled_noisy_images,n, n).to(device=device)
+            
+            up_sampled_images = sampler_fn(net,up_sampled_noisy_images,class_labels, starting_step = 14, randn_like=rnd.randn_like, **sampler_kwargs)
+        
         # Save images.
-        images_np = (up_sampled_images * 127.5 + 128).clip(0, 255).to(torch.uint8).permute(0, 2, 3, 1).cpu().numpy()
+        originals = to_image_numpy(images)
+        bilinear_images = to_image_numpy(bilinear_interpolation(images,img_resolution*2**k, img_resolution*2**k))
+        images_np = to_image_numpy(up_sampled_images)
         #os.makedirs(outdir, exist_ok=True)
         #np.save(os.path.join(outdir, "batch_{}".format(batch_seeds[0])), images_np)
-        for seed, image_np in zip(batch_seeds, images_np):
-            image_dir = os.path.join(outdir, f'{seed-seed%1000:06d}') if subdirs else outdir
-            os.makedirs(image_dir, exist_ok=True)
-            image_path = os.path.join(image_dir, f'{seed:06d}.png')
-            if image_np.shape[2] == 1:
-                PIL.Image.fromarray(image_np[:, :, 0], 'L').save(image_path)
-            else:
-                PIL.Image.fromarray(image_np, 'RGB').save(image_path)
+        save_images(outdir+"/original/",subdirs,batch_seeds,  originals)
+        save_images(outdir+"/bilinear/", subdirs, batch_seeds, bilinear_images)
+        save_images(outdir, subdirs, batch_seeds, images_np)
 
     # Done.
     torch.distributed.barrier()
     dist.print0('Done.')
+
+def to_image_numpy(images):
+    return (images * 127.5 + 128).clip(0, 255).to(torch.uint8).permute(0, 2, 3, 1).cpu().numpy()
+
+def save_images(outdir, subdirs, batch_seeds, images_np):
+    for seed, image_np in zip(batch_seeds, images_np):
+        image_dir = os.path.join(outdir, f'{seed-seed%1000:06d}') if subdirs else outdir
+        os.makedirs(image_dir, exist_ok=True)
+        image_path = os.path.join(image_dir, f'{seed:06d}.png')
+        if image_np.shape[2] == 1:
+            PIL.Image.fromarray(image_np[:, :, 0], 'L').save(image_path)
+        else:
+            PIL.Image.fromarray(image_np, 'RGB').save(image_path)
 
 #----------------------------------------------------------------------------
 
