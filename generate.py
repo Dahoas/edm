@@ -324,10 +324,11 @@ def main(network_pkl, img_resolution, outdir, subdirs, seeds, class_idx, max_bat
         n = img_resolution; k = 2
         # for i in range(1):
         up_sampled_noisy_images = images
+        scale = 4
         for i in range(k):
             n*=2
-            up_sampled_noisy_images = bilinear_interpolation(up_sampled_noisy_images,n, n).to(device=device)
-            
+            up_sampled_noisy_images = bilinear_interpolation(up_sampled_noisy_images,n, n).to(device=device) 
+            # up_sampled_noisy_images+= + torch.rand_like(up_sampled_noisy_images)/scale
             up_sampled_images = sampler_fn(net,up_sampled_noisy_images,class_labels, starting_step = 14, randn_like=rnd.randn_like, **sampler_kwargs)
         
         # Save images.
@@ -338,7 +339,8 @@ def main(network_pkl, img_resolution, outdir, subdirs, seeds, class_idx, max_bat
         #np.save(os.path.join(outdir, "batch_{}".format(batch_seeds[0])), images_np)
         save_images(outdir+"/original/",subdirs,batch_seeds,  originals)
         save_images(outdir+"/bilinear/", subdirs, batch_seeds, bilinear_images)
-        save_images(outdir, subdirs, batch_seeds, images_np)
+        save_images(outdir+"/noisy/", subdirs, batch_seeds, to_image_numpy(up_sampled_noisy_images))
+        save_images(outdir+"/dual-fno/", subdirs, batch_seeds, images_np)
 
     # Done.
     torch.distributed.barrier()
