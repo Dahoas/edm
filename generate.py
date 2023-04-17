@@ -22,6 +22,15 @@ from scipy.interpolate import interp2d
 #----------------------------------------------------------------------------
 # Proposed EDM sampler (Algorithm 2).
 
+def get_ddpm_time_discretization(num_steps, sigma_min, sigma_max,rho, device, net=None):
+    step_indices = torch.arange(num_steps, dtype=torch.float64, device=device)
+    t_steps = (sigma_max ** (1 / rho) + step_indices / (num_steps - 1) * (sigma_min ** (1 / rho) - sigma_max ** (1 / rho))) ** rho
+    if net is None :
+        t_steps = torch.cat([t_steps, torch.zeros_like(t_steps[:1])]) # t_N = 0
+    else:
+        t_steps = torch.cat([net.round_sigma(t_steps), torch.zeros_like(t_steps[:1])]) # t_N = 0
+    return t_steps
+
 def edm_sampler(
     net, latents, class_labels=None, randn_like=torch.randn_like,
     starting_step = -1,
@@ -33,16 +42,12 @@ def edm_sampler(
     sigma_max = min(sigma_max, net.sigma_max)
 
     # Time step discretization.
-    step_indices = torch.arange(num_steps, dtype=torch.float64, device=latents.device)
-    t_steps = (sigma_max ** (1 / rho) + step_indices / (num_steps - 1) * (sigma_min ** (1 / rho) - sigma_max ** (1 / rho))) ** rho
-    t_steps = torch.cat([net.round_sigma(t_steps), torch.zeros_like(t_steps[:1])]) # t_N = 0
-
+    t_steps = get_ddpm_time_discretization(num_steps,sigma_min,sigma_max, rho, device=latents.device, net=net)
     # Main sampling loop.
     x_next = latents
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])): # 0, ..., N-1
         if i < starting_step:
             continue
-
         if i == 0:
             x_next = latents.to(torch.float64) * t_steps[0]
         x_cur = x_next
@@ -62,6 +67,25 @@ def edm_sampler(
             d_prime = (x_next - denoised) / t_next
             x_next = x_hat + (t_next - t_hat) * (0.5 * d_cur + 0.5 * d_prime)
 
+    return x_next
+
+def reverse_edm_sampler(
+    images, 
+    num_steps, tot_steps=18, sigma_min=0.002, sigma_max=80, rho=7,
+    S_churn=0, S_min=0, S_max=float('inf'), S_noise=1,
+    randn_like=torch.randn_like,
+):
+    # Time step discretization.
+    t_steps = get_ddpm_time_discretization(tot_steps,sigma_min,sigma_max, rho, device=images.device)
+
+    # Main sampling loop.
+    x_next = images.to(torch.float64)
+    for i, (t_cur, t_next) in enumerate(reversed(list(zip(t_steps[:-1], t_steps[1:])))): # 0, ..., N-1
+        if i > num_steps:
+            break
+        dh = torch.abs(t_next-t_cur)
+        x_next = x_next + dh * -t_cur*x_next
+        x_next+= randn_like(x_next)*torch.sqrt(2*t_cur*dh)
     return x_next
 
 #----------------------------------------------------------------------------
@@ -260,8 +284,9 @@ def bilinear_interpolation(images, new_height, new_width):
 @click.option('--schedule',                help='Ablate noise schedule sigma(t)', metavar='vp|ve|linear',           type=click.Choice(['vp', 've', 'linear']))
 @click.option('--scaling',                 help='Ablate signal scaling s(t)', metavar='vp|none',                    type=click.Choice(['vp', 'none']))
 @click.option('--img_resolution',                     help='Resolution at which to sample', metavar='INT',                     type=click.IntRange(min=32), default=32)
+@click.option('--cascaded_diffusion_method', help='Cascaded diffusion method', metavar='denoising|random_sample|naive', type=click.Choice(['denoising','random_sample','naive']))
 
-def main(network_pkl, img_resolution, outdir, subdirs, seeds, class_idx, max_batch_size, device=torch.device('cuda'), **sampler_kwargs):
+def main(network_pkl, img_resolution, cascaded_diffusion_method, outdir, subdirs, seeds, class_idx, max_batch_size, device=torch.device('cuda'), **sampler_kwargs):
     """Generate random images using the techniques described in the paper
     "Elucidating the Design Space of Diffusion-Based Generative Models".
 
@@ -319,27 +344,32 @@ def main(network_pkl, img_resolution, outdir, subdirs, seeds, class_idx, max_bat
         sampler_fn = ablation_sampler if have_ablation_kwargs else edm_sampler
         images = sampler_fn(net, latents, class_labels, randn_like=rnd.randn_like, **sampler_kwargs)
         
-
-
-        n = img_resolution; k = 2
-        # for i in range(1):
-        up_sampled_noisy_images = images
-        scale = 4
-        for i in range(k):
-            n*=2
-            up_sampled_noisy_images = bilinear_interpolation(up_sampled_noisy_images,n, n).to(device=device) 
-            # up_sampled_noisy_images+= + torch.rand_like(up_sampled_noisy_images)/scale
-            up_sampled_images = sampler_fn(net,up_sampled_noisy_images,class_labels, starting_step = 14, randn_like=rnd.randn_like, **sampler_kwargs)
+        n = 2*img_resolution
+        up_sampled_images_noisy = bilinear_interpolation(images,n, n).to(device=device) 
         
+        if cascaded_diffusion_method == 'naive':
+            up_sampled_images = sampler_fn(net,up_sampled_images_noisy,class_labels, starting_step = 14, randn_like=rnd.randn_like, **sampler_kwargs)
+        elif cascaded_diffusion_method == 'denoising':
+            num_steps = 3
+            denoised_samples = reverse_edm_sampler(up_sampled_images_noisy,num_steps=num_steps)
+            up_sampled_images = edm_sampler(net,denoised_samples,class_labels,starting_step=18-num_steps-1, randn_like=rnd.randn_like)
+        elif cascaded_diffusion_method == 'random_sample':
+            # TODO (kevin) : not hardcode this
+            num_steps = 4
+            t_steps = get_ddpm_time_discretization(num_steps=18,sigma_min=0.002,sigma_max=80, rho=7, device=latents.device)
+            denoised_samples = up_sampled_images_noisy + torch.randn_like(up_sampled_images_noisy)*t_steps[-num_steps]
+            up_sampled_images = edm_sampler(net,denoised_samples,class_labels,starting_step=18-num_steps-1, randn_like=rnd.randn_like)
+
         # Save images.
         originals = to_image_numpy(images)
-        bilinear_images = to_image_numpy(bilinear_interpolation(images,img_resolution*2**k, img_resolution*2**k))
+        denoised = to_image_numpy(denoised_samples)
+        bilinear_images = to_image_numpy(up_sampled_images_noisy)
         images_np = to_image_numpy(up_sampled_images)
         #os.makedirs(outdir, exist_ok=True)
         #np.save(os.path.join(outdir, "batch_{}".format(batch_seeds[0])), images_np)
         save_images(outdir+"/original/",subdirs,batch_seeds,  originals)
+        save_images(outdir+"/denoised/",subdirs,batch_seeds,  denoised)
         save_images(outdir+"/bilinear/", subdirs, batch_seeds, bilinear_images)
-        save_images(outdir+"/noisy/", subdirs, batch_seeds, to_image_numpy(up_sampled_noisy_images))
         save_images(outdir+"/dual-fno/", subdirs, batch_seeds, images_np)
 
     # Done.
