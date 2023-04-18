@@ -283,10 +283,11 @@ def bilinear_interpolation(images, new_height, new_width):
 @click.option('--disc', 'discretization',  help='Ablate time step discretization {t_i}', metavar='vp|ve|iddpm|edm', type=click.Choice(['vp', 've', 'iddpm', 'edm']))
 @click.option('--schedule',                help='Ablate noise schedule sigma(t)', metavar='vp|ve|linear',           type=click.Choice(['vp', 've', 'linear']))
 @click.option('--scaling',                 help='Ablate signal scaling s(t)', metavar='vp|none',                    type=click.Choice(['vp', 'none']))
-@click.option('--img_resolution',                     help='Resolution at which to sample', metavar='INT',                     type=click.IntRange(min=32), default=32)
+@click.option('--img_resolution',          help='Resolution at which to sample', metavar='INT',                     type=click.IntRange(min=32), default=32)
+@click.option('--super_resolution',        help='Resolution at which to up sample', metavar='INT',                     type=click.IntRange(min=32), default=32)
 @click.option('--cascaded_diffusion_method', help='Cascaded diffusion method', metavar='denoising|random_sample|naive', type=click.Choice(['denoising','random_sample','naive']))
 
-def main(network_pkl, img_resolution, cascaded_diffusion_method, outdir, subdirs, seeds, class_idx, max_batch_size, device=torch.device('cuda'), **sampler_kwargs):
+def main(network_pkl, img_resolution, super_resolution, cascaded_diffusion_method, outdir, subdirs, seeds, class_idx, max_batch_size, device=torch.device('cuda'), **sampler_kwargs):
     """Generate random images using the techniques described in the paper
     "Elucidating the Design Space of Diffusion-Based Generative Models".
 
@@ -344,8 +345,7 @@ def main(network_pkl, img_resolution, cascaded_diffusion_method, outdir, subdirs
         sampler_fn = ablation_sampler if have_ablation_kwargs else edm_sampler
         images = sampler_fn(net, latents, class_labels, randn_like=rnd.randn_like, **sampler_kwargs)
         
-        n = 2*img_resolution
-        up_sampled_images_noisy = bilinear_interpolation(images,n, n).to(device=device) 
+        up_sampled_images_noisy = bilinear_interpolation(images,super_resolution, super_resolution).to(device=device) 
         
         if cascaded_diffusion_method == 'naive':
             up_sampled_images = sampler_fn(net,up_sampled_images_noisy,class_labels, starting_step = 14, randn_like=rnd.randn_like, **sampler_kwargs)
