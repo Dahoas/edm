@@ -137,7 +137,7 @@ class SpectralConv2d(nn.Module):
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.max_fourier_modes1 = max_fourier_modes # Maximum number of fourier modes that we will take into account in the 1st dimension
-        self.max_fourier_modes2 = max_fourier_modes//2 + 1 # Maximum number of fourier modes that we will take into account in the 2nd dimension
+        self.max_fourier_modes2 = max_fourier_modes//2 + 1 if max_fourier_modes is not None else None # Maximum number of fourier modes that we will take into account in the 2nd dimension
         self.modes1 = modes1 #Number of Fourier modes to multiply, at most floor(N/2) + 1
         self.modes2 = modes2
         self.down = down
@@ -148,7 +148,6 @@ class SpectralConv2d(nn.Module):
         self.scale = (1 / (in_channels * out_channels))
         self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, 2))
         self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, 2))
-       
     # Complex multiplication
     def compl_mul2d(self, input, weights):
         # (batch, in_channel, x,y), (in_channel, out_channel, x,y) -> (batch, out_channel, x,y)
@@ -174,15 +173,15 @@ class SpectralConv2d(nn.Module):
         #Compute Fourier coeffcients up to factor of e^(- something constant)
         x_ft = torch.fft.rfft2(x)
         dim1, dim2 = x_ft.shape[2:]
-        if dim1 < self.max_fourier_modes1:
-            x_ft = pad(x_ft,(
-                            0,self.max_fourier_modes2 - dim2,
-                            0,self.max_fourier_modes1 - dim1,
-                            0,0,
-                            0,0))
-        else : 
-            x_ft = x_ft[:,:,:self.max_fourier_modes1, :self.max_fourier_modes2]
-        dim1, dim2 = x_ft.shape[2:]
+        if self.max_fourier_modes1 is not None:
+            if dim1 < self.max_fourier_modes1:
+                x_ft = pad(x_ft,(
+                                0,self.max_fourier_modes2 - dim2,
+                                0,self.max_fourier_modes1 - dim1,
+                                0,0,
+                                0,0))
+            else : 
+                x_ft = x_ft[:,:,:self.max_fourier_modes1, :self.max_fourier_modes2]
         x_ft = torch.view_as_real(x_ft)
 
 
@@ -281,7 +280,7 @@ class DualUNetBlock(torch.nn.Module):
     def __init__(self,
         in_channels, out_channels, emb_channels, 
         modes1, modes2,
-        max_fourier_modes,
+        max_fourier_modes=None,
         up=False, down=False, attention=False,
         num_heads=None, channels_per_head=64, dropout=0, skip_scale=1, eps=1e-5,
         resample_filter=[1,1], resample_proj=False, adaptive_scale=True,
