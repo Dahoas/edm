@@ -301,8 +301,9 @@ class DualUNetBlock(torch.nn.Module):
         self.down = down
         self.up = up
 
-        max_fourier_modes = max_fourier_modes*2 if up else max_fourier_modes
-        max_fourier_modes = max_fourier_modes//2 if down else max_fourier_modes
+        if max_fourier_modes is not None:
+            max_fourier_modes = max_fourier_modes*2 if up else max_fourier_modes
+            max_fourier_modes = max_fourier_modes//2 if down else max_fourier_modes
 
 
         self.norm0 = GroupNorm(num_channels=in_channels, eps=eps)
@@ -412,7 +413,7 @@ class DualUNet(torch.nn.Module):
         mode                = "dual",        # Run convs in def/fourier/dual mode
         modes1_list         = None,           # Number of fourier modes to take in first dim
         modes2_list         = None,           # Number of fourier modes to take in second dim
-        max_fourier_modes = 128,
+        max_fourier_modes = None,
         dual_block_thresh   = -1,
         random_fourier_feature = None,      # Random matrix B such that we map a vector v -> cos(2piBv),sin(2piBv)
         verbose             = False,         # For print debugging
@@ -453,7 +454,7 @@ class DualUNet(torch.nn.Module):
         for level, mult in enumerate(channel_mult):
             modes1, modes2 = modes1_list[level], modes2_list[level]
             block_kwargs["use_spectral"] = level <= dual_block_thresh if mode=="dual" else block_kwargs["use_spectral"]
-            max_f_modes_level = max_fourier_modes//2**level
+            max_f_modes_level = max_fourier_modes//2**level if max_fourier_modes is not None else None
             if level == 0:
                 cin = cout
                 cout = model_channels
@@ -475,7 +476,7 @@ class DualUNet(torch.nn.Module):
             # But actually this also true of the fourier layers in the encoder after down-sampling
             block_kwargs["use_spectral"] = level <= dual_block_thresh if mode=="dual" else block_kwargs["use_spectral"]
             num_channel_mult = len(channel_mult)
-            max_f_modes_level = max_fourier_modes//2**level
+            max_f_modes_level = max_fourier_modes//2**level if max_fourier_modes is not None else None
             if level == num_channel_mult - 1:
                 self.dec[f'{level}_in0'] = DualUNetBlock(in_channels=cout, out_channels=cout, attention=True, max_fourier_modes = max_f_modes_level, modes1=modes1, modes2=modes2, **block_kwargs)
                 self.dec[f'{level}_in1'] = DualUNetBlock(in_channels=cout, out_channels=cout,  max_fourier_modes = max_f_modes_level, modes1=modes1, modes2=modes2, **block_kwargs)
