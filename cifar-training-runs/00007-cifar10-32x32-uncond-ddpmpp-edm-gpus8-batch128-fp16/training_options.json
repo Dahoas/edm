@@ -31,20 +31,21 @@
       2
     ],
     "mode": "dual",
+    "verbose": false,
     "num_blocks": 4,
     "attn_levels": [
       2
     ],
     "modes1_list": [
-      16,
       8,
+      4,
       4,
       null
     ],
     "modes2_list": [
       9,
       5,
-      3,
+      5,
       null
     ],
     "dual_block_thresh": 2,
@@ -84,6 +85,6 @@
   "kimg_per_tick": 50,
   "snapshot_ticks": 25,
   "state_dump_ticks": 500,
-  "seed": 1273242334,
-  "run_dir": "cifar-training-runs/00000-cifar10-32x32-uncond-ddpmpp-edm-gpus8-batch128-fp16"
+  "seed": 922372773,
+  "run_dir": "cifar-training-runs/00007-cifar10-32x32-uncond-ddpmpp-edm-gpus8-batch128-fp16"
 }
