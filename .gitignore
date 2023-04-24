@@ -10,3 +10,8 @@ __pycache__/
 datasets/
 *.pyc
 *_out/
+*.jsonl
+*.json
+*training-runs/
+ffhq-training-runs/
+test-training-runs/

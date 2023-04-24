@@ -37,6 +37,7 @@ def training_loop(
     total_kimg          = 200000,   # Training duration, measured in thousands of training images.
     ema_halflife_kimg   = 500,      # Half-life of the exponential moving average (EMA) of model weights.
     ema_rampup_ratio    = 0.05,     # EMA ramp-up coefficient, None = no rampup.
+    finetune_spectral   = False,    # Freeze all layers except spectral layers
     lr_rampup_kimg      = 10000,    # Learning rate ramp-up duration.
     loss_scaling        = 1,        # Loss scaling factor for reducing FP16 under/overflows.
     kimg_per_tick       = 50,       # Interval of progress prints.
@@ -93,7 +94,7 @@ def training_loop(
     loss_fn = dnnlib.util.construct_class_by_name(**loss_kwargs) # training.loss.(VP|VE|EDM)Loss
     optimizer = dnnlib.util.construct_class_by_name(params=net.parameters(), **optimizer_kwargs) # subclass of torch.optim.Optimizer
     augment_pipe = dnnlib.util.construct_class_by_name(**augment_kwargs) if augment_kwargs is not None else None # training.augment.AugmentPipe
-    ddp = torch.nn.parallel.DistributedDataParallel(net, device_ids=[device], broadcast_buffers=False)
+    ddp = torch.nn.parallel.DistributedDataParallel(net, device_ids=[device], broadcast_buffers=False, find_unused_parameters=finetune_spectral)
     ema = copy.deepcopy(net).eval().requires_grad_(False)
 
     # Resume training from previous snapshot.
@@ -114,6 +115,15 @@ def training_loop(
         misc.copy_params_and_buffers(src_module=data['net'], dst_module=net, require_all=True)
         optimizer.load_state_dict(data['optimizer_state'])
         del data # conserve memory
+
+    # Freeze non-spectral layers if fine-tuning spectral
+    if finetune_spectral:
+        print("Freezing all but spectral layers...")
+        for param in net.parameters():
+            param.requires_grad = False
+        for name, param in net.named_parameters():
+            if "spectral_conv" in name:
+                param.requires_grad = True
 
     # Train.
     dist.print0(f'Training for {total_kimg} kimg...')

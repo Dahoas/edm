@@ -49,7 +49,9 @@ def parse_int_list(s):
 @click.option('--precond',       help='Preconditioning & loss function', metavar='vp|ve|edm',       type=click.Choice(['vp', 've', 'edm']), default='edm', show_default=True)
 @click.option('--n_res_blocks',  help='Num res blocks per level', metavar='INT',                    type=int)
 @click.option('--mode',          help='Spatial/spectral modes to use', metavar='def|fourier|dual',  type=click.Choice(['def', 'fourier', 'dual']), default='def', show_default=True)
-@click.option('--random_fourier',help='Pass data through a random fourier projection',type=bool, default=False)
+@click.option('--random_fourier',help='Pass data through a random fourier projection',              type=bool, default=False)
+@click.option('--noise_type',    help='Noise type',                                                 type=str, default='gaussian')
+@click.option('--finetune_spectral', help="Freeze all but spectral layers", metavar='BOOL',         type=bool, default=False)
 
 # Hyperparameters.
 @click.option('--duration',      help='Training duration', metavar='MIMG',                          type=click.FloatRange(min=0, min_open=True), default=200, show_default=True)
@@ -114,8 +116,7 @@ def main(**kwargs):
     if opts.n_res_blocks:
         c.network_kwargs.update(num_blocks=opts.n_res_blocks)
 
-    c.network_kwargs.update(mode=opts.mode)
-    c.network_kwargs.update(verbose=opts.verbose)
+    c.network_kwargs.update(mode=opts.mode, verbose=opts.verbose)
 
     # Load yaml model config
     if opts.model_config_path is not None:
@@ -151,6 +152,7 @@ def main(**kwargs):
     c.update(batch_size=opts.batch, batch_gpu=opts.batch_gpu)
     c.update(loss_scaling=opts.ls, cudnn_benchmark=opts.bench)
     c.update(kimg_per_tick=opts.tick, snapshot_ticks=opts.snap, state_dump_ticks=opts.dump)
+    c.update(finetune_spectral=opts.finetune_spectral)
 
     # Random seed.
     if opts.seed is not None:
