@@ -118,12 +118,10 @@ def training_loop(
 
     # Freeze non-spectral layers if fine-tuning spectral
     if finetune_spectral:
-        print("Freezing all but spectral layers...")
-        for param in net.parameters():
-            param.requires_grad = False
+        print("Freezing spatial conv layers...")
         for name, param in net.named_parameters():
-            if "spectral_conv" in name:
-                param.requires_grad = True
+            if "spatial_conv" in name:
+                param.requires_grad = False
 
     # Train.
     dist.print0(f'Training for {total_kimg} kimg...')
