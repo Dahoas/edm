@@ -64,6 +64,7 @@ def parse_int_list(s):
 @click.option('--dropout',       help='Dropout probability', metavar='FLOAT',                       type=click.FloatRange(min=0, max=1), default=0.13, show_default=True)
 @click.option('--augment',       help='Augment probability', metavar='FLOAT',                       type=click.FloatRange(min=0, max=1), default=0.12, show_default=True)
 @click.option('--xflip',         help='Enable dataset x-flips', metavar='BOOL',                     type=bool, default=False, show_default=True)
+@click.option('-dw', '--datasets_weights', help='Datasets training weighting',                             type=float, multiple=True, default=None)
 
 # Performance-related.
 @click.option('--fp16',          help='Enable mixed-precision training', metavar='BOOL',            type=bool, default=False, show_default=True)
@@ -105,6 +106,7 @@ def main(**kwargs):
     c = dnnlib.EasyDict()
     opts.data = [opts.data] if type(opts.data) == str else opts.data
     c.datasets_kwargs = [dnnlib.EasyDict(class_name='training.dataset.ImageFolderDataset', path=path, use_labels=opts.cond, xflip=opts.xflip, cache=opts.cache) for path in opts.data]
+    c.datasets_weights = opts.datasets_weights
     c.data_loader_kwargs = dnnlib.EasyDict(pin_memory=True, num_workers=opts.workers, prefetch_factor=2)
     c.network_kwargs = dnnlib.EasyDict()
     c.loss_kwargs = dnnlib.EasyDict()

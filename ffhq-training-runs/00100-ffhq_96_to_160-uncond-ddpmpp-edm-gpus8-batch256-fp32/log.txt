@@ -128,3 +128,14 @@ Freezing all but spectral layers...
 Training for 200000 kimg...
 
 tick 0     kimg 0.3       time 32s          sec/tick 11.4    sec/kimg 44.39   maintenance 21.0   cpumem 5.89   gpumem 52.63  reserved 55.87 
+tick 1     kimg 25.3      time 4m 29s       sec/tick 234.0   sec/kimg 9.33    maintenance 3.0    cpumem 5.89   gpumem 29.62  reserved 31.13 
+tick 2     kimg 50.4      time 8m 23s       sec/tick 233.9   sec/kimg 9.32    maintenance 0.0    cpumem 5.89   gpumem 29.62  reserved 31.13 
+tick 3     kimg 75.5      time 12m 17s      sec/tick 233.8   sec/kimg 9.32    maintenance 0.0    cpumem 5.89   gpumem 29.62  reserved 31.13 
+tick 4     kimg 100.6     time 16m 11s      sec/tick 233.8   sec/kimg 9.32    maintenance 0.0    cpumem 5.89   gpumem 29.62  reserved 31.13 
+tick 5     kimg 125.7     time 20m 05s      sec/tick 233.8   sec/kimg 9.32    maintenance 0.0    cpumem 5.89   gpumem 29.62  reserved 31.13 
+tick 6     kimg 150.8     time 23m 59s      sec/tick 233.7   sec/kimg 9.32    maintenance 0.0    cpumem 5.89   gpumem 29.62  reserved 31.13 
+tick 7     kimg 175.9     time 27m 52s      sec/tick 233.8   sec/kimg 9.32    maintenance 0.0    cpumem 5.89   gpumem 29.62  reserved 31.13 
+tick 8     kimg 201.0     time 31m 46s      sec/tick 233.7   sec/kimg 9.32    maintenance 0.0    cpumem 5.89   gpumem 29.62  reserved 31.13 
+tick 9     kimg 226.0     time 35m 40s      sec/tick 233.7   sec/kimg 9.32    maintenance 0.0    cpumem 5.89   gpumem 29.62  reserved 31.13 
+tick 10    kimg 251.1     time 39m 38s      sec/tick 237.8   sec/kimg 9.48    maintenance 0.0    cpumem 5.89   gpumem 29.62  reserved 31.13 
+tick 11    kimg 276.2     time 43m 31s      sec/tick 233.8   sec/kimg 9.32    maintenance 0.0    cpumem 5.89   gpumem 29.62  reserved 31.13 
