@@ -40,6 +40,8 @@ def training_loop(
     ema_rampup_ratio    = 0.05,     # EMA ramp-up coefficient, None = no rampup.
     finetune_spectral   = False,    # Freeze all layers except spectral layers
     lr_rampup_kimg      = 10000,    # Learning rate ramp-up duration.
+    data_warmup_ticks   = 2,        # Number of ticks to run at smaller resolutions before training on larger resolutions
+    data_warmup_thresh  = 96,       # Maximum resolution at which to train during data warmup
     loss_scaling        = 1,        # Loss scaling factor for reducing FP16 under/overflows.
     kimg_per_tick       = 50,       # Interval of progress prints.
     snapshot_ticks      = 50,       # How often to save network snapshots, None = disable.
@@ -74,7 +76,7 @@ def training_loop(
     dataset_names = []
     for dataset_kwargs in datasets_kwargs:
         dataset_obj = dnnlib.util.construct_class_by_name(**dataset_kwargs) # subclass of training.dataset.Dataset
-        dataset_name = os.path.basename(dataset_kwargs.path)
+        dataset_name = os.path.basename(dataset_kwargs.path).replace(".zip", "")
         datasets_objs.append(dataset_obj)
         dataset_names.append(dataset_name)
     assert functools.reduce(lambda x, y: x and y, [len(datasets_objs[0]) == len(d) for d in datasets_objs])
@@ -82,6 +84,8 @@ def training_loop(
     datasets_iterators = [iter(torch.utils.data.DataLoader(dataset=dataset_obj, sampler=dataset_sampler, batch_size=batch_gpu, **data_loader_kwargs)) for dataset_sampler, dataset_obj in zip(datasets_samplers, datasets_objs)]
     datasets_iterators = list(zip(dataset_names, datasets_iterators))
     datasets_weights = datasets_weights if len(datasets_weights) == len(datasets_kwargs) else [1 / len(datasets_kwargs) for _ in range(len(datasets_kwargs))]
+    assert int(sum(datasets_weights)) == 1
+    assert len(datasets_weights) == len(datasets_iterators)
     print("Dataset weights: {}...".format(datasets_weights))
 
     # Construct network.
@@ -141,11 +145,16 @@ def training_loop(
     dist.update_progress(cur_nimg // 1000, total_kimg)
     stats_jsonl = None
     while True:
-        # Accumulate gradients.
-        print(datasets_weights)
-        print(len(datasets_iterators))
-        dataset_name, dataset_iterator = datasets_iterators[np.random.choice(np.arange(len(datasets_iterators)), p=datasets_weights)]
+        # Sample training dataset. Only sample from low resolutions to warm-up training
+        if cur_tick < data_warmup_ticks:
+            res = None
+            while res is None or res > data_warmup_thresh:
+                dataset_name, dataset_iterator = datasets_iterators[np.random.choice(np.arange(len(datasets_iterators)), p=datasets_weights)]
+                res = int(dataset_name.split('x')[-1])
+        else:
+            dataset_name, dataset_iterator = datasets_iterators[np.random.choice(np.arange(len(datasets_iterators)), p=datasets_weights)]
         optimizer.zero_grad(set_to_none=True)
+        # Accumulate gradients
         for round_idx in range(num_accumulation_rounds):
             with misc.ddp_sync(ddp, (round_idx == num_accumulation_rounds - 1)):
                 images, labels = next(dataset_iterator)
