@@ -38,7 +38,7 @@ def training_loop(
     total_kimg          = 200000,   # Training duration, measured in thousands of training images.
     ema_halflife_kimg   = 500,      # Half-life of the exponential moving average (EMA) of model weights.
     ema_rampup_ratio    = 0.05,     # EMA ramp-up coefficient, None = no rampup.
-    finetune_spectral   = False,    # Freeze all layers except spectral layers
+    frozen_layers       = None,    # Freeze all layers in list
     lr_rampup_kimg      = 10000,    # Learning rate ramp-up duration.
     data_warmup_ticks   = 2,        # Number of ticks to run at smaller resolutions before training on larger resolutions
     data_warmup_thresh  = 96,       # Maximum resolution at which to train during data warmup
@@ -61,33 +61,36 @@ def training_loop(
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = False
 
-    # Select batch size per GPU.
-    batch_gpu_total = batch_size // dist.get_world_size()
-    if batch_gpu is None or batch_gpu > batch_gpu_total:
-        batch_gpu = batch_gpu_total
-    num_accumulation_rounds = batch_gpu_total // batch_gpu
-    assert batch_size == batch_gpu * num_accumulation_rounds * dist.get_world_size()
-
     # Load dataset.
     dist.print0('Loading datasets...')
-
-    #TODO(dahoas): Figure out more principled way of doing multi-res training
-    datasets_objs = []
-    dataset_names = []
-    for dataset_kwargs in datasets_kwargs:
-        dataset_obj = dnnlib.util.construct_class_by_name(**dataset_kwargs) # subclass of training.dataset.Dataset
+    datasets_iterators = []
+    batch_gpu_total = batch_size // dist.get_world_size()
+    for i, dataset_kwargs in enumerate(datasets_kwargs):
         dataset_name = os.path.basename(dataset_kwargs.path).replace(".zip", "")
-        datasets_objs.append(dataset_obj)
-        dataset_names.append(dataset_name)
-    assert functools.reduce(lambda x, y: x and y, [len(datasets_objs[0]) == len(d) for d in datasets_objs])
-    datasets_samplers = [misc.InfiniteSampler(dataset=dataset_obj, rank=dist.get_rank(), num_replicas=dist.get_world_size(), seed=seed) for dataset_obj in datasets_objs]
-    datasets_iterators = [iter(torch.utils.data.DataLoader(dataset=dataset_obj, sampler=dataset_sampler, batch_size=batch_gpu, **data_loader_kwargs)) for dataset_sampler, dataset_obj in zip(datasets_samplers, datasets_objs)]
-    datasets_iterators = list(zip(dataset_names, datasets_iterators))
+        dataset_obj = dnnlib.util.construct_class_by_name(**dataset_kwargs) # subclass of training.dataset.Dataset
+        dataset_sampler = misc.InfiniteSampler(dataset=dataset_obj, rank=dist.get_rank(), num_replicas=dist.get_world_size(), seed=seed)
+        # Select batch size per GPU.
+        
+        bg = None if batch_gpu is None or len(batch_gpu) == 0 else batch_gpu[i]
+        if bg is None or bg > batch_gpu_total:
+            bg = batch_gpu_total
+        num_accumulation_rounds = batch_gpu_total // bg
+        assert batch_size == bg * num_accumulation_rounds * dist.get_world_size()
+        
+        dataset_iterator = iter(torch.utils.data.DataLoader(dataset=dataset_obj, sampler=dataset_sampler, batch_size=bg, **data_loader_kwargs))
+        datasets_iterators.append(dataset_iterator)
+        dataset_iterator.bg = bg
+        dataset_iterator.num_accumulation_rounds = num_accumulation_rounds
+        dataset_iterator.dataset_name = dataset_name
+    #assert functools.reduce(lambda x, y: x and y, [len(datasets_iterators[0]) == len(d) for d in datasets_iterators])
+
+    # Set dataset sampling weights
     datasets_weights = datasets_weights if len(datasets_weights) == len(datasets_kwargs) else [1 / len(datasets_kwargs) for _ in range(len(datasets_kwargs))]
     assert int(sum(datasets_weights)) == 1
     assert len(datasets_weights) == len(datasets_iterators)
-    print("Dataset weights: {}...".format(datasets_weights))
 
+    print("Dataset weights: {}...".format(datasets_weights))
+    
     # Construct network.
     dist.print0('Constructing network...')
     interface_kwargs = dict(img_channels=dataset_obj.num_channels, label_dim=dataset_obj.label_dim)
@@ -95,9 +98,9 @@ def training_loop(
     net.train().requires_grad_(True).to(device)
     if dist.get_rank() == 0:
         with torch.no_grad():
-            images = torch.zeros([batch_gpu, net.img_channels, dataset_obj.resolution, dataset_obj.resolution], device=device)
-            sigma = torch.ones([batch_gpu], device=device)
-            labels = torch.zeros([batch_gpu, net.label_dim], device=device)
+            images = torch.zeros([bg, net.img_channels, dataset_obj.resolution, dataset_obj.resolution], device=device)
+            sigma = torch.ones([bg], device=device)
+            labels = torch.zeros([bg, net.label_dim], device=device)
             misc.print_module_summary(net, [images, sigma, labels], max_nesting=2)
 
     # Setup optimizer.
@@ -105,7 +108,7 @@ def training_loop(
     loss_fn = dnnlib.util.construct_class_by_name(**loss_kwargs) # training.loss.(VP|VE|EDM)Loss
     optimizer = dnnlib.util.construct_class_by_name(params=net.parameters(), **optimizer_kwargs) # subclass of torch.optim.Optimizer
     augment_pipe = dnnlib.util.construct_class_by_name(**augment_kwargs) if augment_kwargs is not None else None # training.augment.AugmentPipe
-    ddp = torch.nn.parallel.DistributedDataParallel(net, device_ids=[device], broadcast_buffers=False, find_unused_parameters=finetune_spectral)
+    ddp = torch.nn.parallel.DistributedDataParallel(net, device_ids=[device], broadcast_buffers=False, find_unused_parameters=True)  # TODO(dahoas) Fix
     ema = copy.deepcopy(net).eval().requires_grad_(False)
 
     # Resume training from previous snapshot.
@@ -127,12 +130,21 @@ def training_loop(
         optimizer.load_state_dict(data['optimizer_state'])
         del data # conserve memory
 
-    # Freeze non-spectral layers if fine-tuning spectral
-    if finetune_spectral:
-        print("Freezing spatial conv layers...")
+    # Freeze some layers for fine-tuning
+    if frozen_layers is not None:
         for name, param in net.named_parameters():
-            if "spatial_conv" in name:
-                param.requires_grad = False
+            if ".enc" in name or ".dec" in name:
+                print(name)
+                level = int(name.split(".")[2][0])
+                if frozen_layers.get(level) is not None:
+                    for block_type in frozen_layers[level]:
+                        if block_type in name:
+                            param.requires_grad = False
+            else:
+                if frozen_layers.get("misc") is not None:
+                    for block_type in frozen_layers["misc"]:
+                        if block_type in name:
+                            param.requires_grad = False
 
     # Train.
     dist.print0(f'Training for {total_kimg} kimg...')
@@ -149,10 +161,12 @@ def training_loop(
         if cur_tick < data_warmup_ticks:
             res = None
             while res is None or res > data_warmup_thresh:
-                dataset_name, dataset_iterator = datasets_iterators[np.random.choice(np.arange(len(datasets_iterators)), p=datasets_weights)]
+                dataset_iterator = datasets_iterators[np.random.choice(np.arange(len(datasets_iterators)), p=datasets_weights)]
+                dataset_name = dataset_iterator.dataset_name
                 res = int(dataset_name.split('x')[-1])
         else:
-            dataset_name, dataset_iterator = datasets_iterators[np.random.choice(np.arange(len(datasets_iterators)), p=datasets_weights)]
+            dataset_iterator = datasets_iterators[np.random.choice(np.arange(len(datasets_iterators)), p=datasets_weights)]
+        dataset_name, bg, num_accumulation_rounds = dataset_iterator.dataset_name, dataset_iterator.bg, dataset_iterator.num_accumulation_rounds
         optimizer.zero_grad(set_to_none=True)
         # Accumulate gradients
         for round_idx in range(num_accumulation_rounds):

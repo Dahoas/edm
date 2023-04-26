@@ -43,7 +43,7 @@ def parse_int_list(s):
 
 # Main options.
 @click.option('--outdir',        help='Where to save the results', metavar='DIR',                   type=str, required=True)
-@click.option('-d', '--data',          help='Paths to the datasets',                                      type=str, multiple=True, required=True)
+@click.option('-d', '--data',    help='Paths to the datasets',                                      type=str, multiple=True, required=True)
 @click.option('--cond',          help='Train class-conditional model', metavar='BOOL',              type=bool, default=False, show_default=True)
 @click.option('--arch',          help='Network architecture', metavar='ddpmpp|ncsnpp|adm',          type=click.Choice(['ddpmpp', 'ncsnpp', 'adm']), default='ddpmpp', show_default=True)
 @click.option('--precond',       help='Preconditioning & loss function', metavar='vp|ve|edm',       type=click.Choice(['vp', 've', 'edm']), default='edm', show_default=True)
@@ -51,12 +51,11 @@ def parse_int_list(s):
 @click.option('--mode',          help='Spatial/spectral modes to use', metavar='def|fourier|dual',  type=click.Choice(['def', 'fourier', 'dual']), default='def', show_default=True)
 @click.option('--random_fourier',help='Pass data through a random fourier projection',              type=bool, default=False)
 @click.option('--noise_type',    help='Noise type',                                                 type=str, default='gaussian')
-@click.option('--finetune_spectral', help="Freeze all but spectral layers", metavar='BOOL',         type=bool, default=False)
 
 # Hyperparameters.
 @click.option('--duration',      help='Training duration', metavar='MIMG',                          type=click.FloatRange(min=0, min_open=True), default=200, show_default=True)
 @click.option('--batch',         help='Total batch size', metavar='INT',                            type=click.IntRange(min=1), default=512, show_default=True)
-@click.option('--batch-gpu',     help='Limit batch size per GPU', metavar='INT',                    type=click.IntRange(min=1))
+@click.option('-bg', '--batch-gpu',     help='Limit batch size per GPU', metavar='INT',                    type=click.IntRange(min=1), multiple=True)
 @click.option('--cbase',         help='Channel multiplier  [default: varies]', metavar='INT',       type=int)
 @click.option('--cres',          help='Channels per resolution  [default: varies]', metavar='LIST', type=parse_int_list)
 @click.option('--lr',            help='Learning rate', metavar='FLOAT',                             type=click.FloatRange(min=0, min_open=True), default=10e-4, show_default=True)
@@ -123,7 +122,10 @@ def main(**kwargs):
     # Load yaml model config
     if opts.model_config_path is not None:
         model_config = yaml.safe_load(open(opts.model_config_path, "r"))
+        c.frozen_layers = model_config.get("frozen_layers")
+        model_config.pop("frozen_layers") if c.frozen_layers is not None else None
         c.network_kwargs.update(**model_config)
+        
 
     # Preconditioning & loss function.
     if opts.precond == 'vp':
@@ -154,7 +156,6 @@ def main(**kwargs):
     c.update(batch_size=opts.batch, batch_gpu=opts.batch_gpu)
     c.update(loss_scaling=opts.ls, cudnn_benchmark=opts.bench)
     c.update(kimg_per_tick=opts.tick, snapshot_ticks=opts.snap, state_dump_ticks=opts.dump)
-    c.update(finetune_spectral=opts.finetune_spectral)
 
     # Random seed.
     if opts.seed is not None:
