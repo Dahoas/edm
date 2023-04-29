@@ -396,6 +396,7 @@ class DualUNet(torch.nn.Module):
         modes2_list         = None,           # Number of fourier modes to take in second dim
         dual_block_thresh   = -1,
         random_fourier_feature = None,      # Random matrix B such that we map a vector v -> cos(2piBv),sin(2piBv)
+        unfrozen_layers     = None,         # Layers unfrozen for training
         verbose             = False,         # For print debugging
     ):
         assert embedding_type in ['fourier', 'positional']

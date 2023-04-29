@@ -43,18 +43,19 @@ def parse_int_list(s):
 
 # Main options.
 @click.option('--outdir',        help='Where to save the results', metavar='DIR',                   type=str, required=True)
-@click.option('-d', '--data',          help='Paths to the datasets',                                      type=str, multiple=True, required=True)
+@click.option('-d', '--data',    help='Paths to the datasets',                                      type=str, multiple=True, required=True)
 @click.option('--cond',          help='Train class-conditional model', metavar='BOOL',              type=bool, default=False, show_default=True)
 @click.option('--arch',          help='Network architecture', metavar='ddpmpp|ncsnpp|adm',          type=click.Choice(['ddpmpp', 'ncsnpp', 'adm']), default='ddpmpp', show_default=True)
 @click.option('--precond',       help='Preconditioning & loss function', metavar='vp|ve|edm',       type=click.Choice(['vp', 've', 'edm']), default='edm', show_default=True)
 @click.option('--n_res_blocks',  help='Num res blocks per level', metavar='INT',                    type=int)
 @click.option('--mode',          help='Spatial/spectral modes to use', metavar='def|fourier|dual',  type=click.Choice(['def', 'fourier', 'dual']), default='def', show_default=True)
-@click.option('--random_fourier',help='Pass data through a random fourier projection',type=bool, default=False)
+@click.option('--random_fourier',help='Pass data through a random fourier projection',              type=bool, default=False)
+@click.option('--noise_type',    help='Noise type',                                                 type=str, default='gaussian')
 
 # Hyperparameters.
 @click.option('--duration',      help='Training duration', metavar='MIMG',                          type=click.FloatRange(min=0, min_open=True), default=200, show_default=True)
 @click.option('--batch',         help='Total batch size', metavar='INT',                            type=click.IntRange(min=1), default=512, show_default=True)
-@click.option('--batch-gpu',     help='Limit batch size per GPU', metavar='INT',                    type=click.IntRange(min=1))
+@click.option('-bg', '--batch-gpu',     help='Limit batch size per GPU', metavar='INT',                    type=click.IntRange(min=1), multiple=True)
 @click.option('--cbase',         help='Channel multiplier  [default: varies]', metavar='INT',       type=int)
 @click.option('--cres',          help='Channels per resolution  [default: varies]', metavar='LIST', type=parse_int_list)
 @click.option('--lr',            help='Learning rate', metavar='FLOAT',                             type=click.FloatRange(min=0, min_open=True), default=10e-4, show_default=True)
@@ -62,6 +63,7 @@ def parse_int_list(s):
 @click.option('--dropout',       help='Dropout probability', metavar='FLOAT',                       type=click.FloatRange(min=0, max=1), default=0.13, show_default=True)
 @click.option('--augment',       help='Augment probability', metavar='FLOAT',                       type=click.FloatRange(min=0, max=1), default=0.12, show_default=True)
 @click.option('--xflip',         help='Enable dataset x-flips', metavar='BOOL',                     type=bool, default=False, show_default=True)
+@click.option('-dw', '--datasets_weights', help='Datasets training weighting',                             type=float, multiple=True, default=None)
 
 # Performance-related.
 @click.option('--fp16',          help='Enable mixed-precision training', metavar='BOOL',            type=bool, default=False, show_default=True)
@@ -103,6 +105,7 @@ def main(**kwargs):
     c = dnnlib.EasyDict()
     opts.data = [opts.data] if type(opts.data) == str else opts.data
     c.datasets_kwargs = [dnnlib.EasyDict(class_name='training.dataset.ImageFolderDataset', path=path, use_labels=opts.cond, xflip=opts.xflip, cache=opts.cache) for path in opts.data]
+    c.datasets_weights = opts.datasets_weights
     c.data_loader_kwargs = dnnlib.EasyDict(pin_memory=True, num_workers=opts.workers, prefetch_factor=2)
     c.network_kwargs = dnnlib.EasyDict()
     c.loss_kwargs = dnnlib.EasyDict()
@@ -114,13 +117,15 @@ def main(**kwargs):
     if opts.n_res_blocks:
         c.network_kwargs.update(num_blocks=opts.n_res_blocks)
 
-    c.network_kwargs.update(mode=opts.mode)
-    c.network_kwargs.update(verbose=opts.verbose)
+    c.network_kwargs.update(mode=opts.mode, verbose=opts.verbose)
 
     # Load yaml model config
     if opts.model_config_path is not None:
         model_config = yaml.safe_load(open(opts.model_config_path, "r"))
+        c.frozen_layers = model_config.get("frozen_layers")
+        model_config.pop("frozen_layers") if c.frozen_layers is not None else None
         c.network_kwargs.update(**model_config)
+        
 
     # Preconditioning & loss function.
     if opts.precond == 'vp':
