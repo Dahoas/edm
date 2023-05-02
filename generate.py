@@ -18,14 +18,19 @@ import torch
 import PIL.Image
 import dnnlib
 from torch_utils import distributed as dist
+<<<<<<< Updated upstream
 
+=======
+from scipy.interpolate import interp2d
+import re
+>>>>>>> Stashed changes
 #----------------------------------------------------------------------------
 # Proposed EDM sampler (Algorithm 2).
 
 def edm_sampler(
     net, latents, class_labels=None, randn_like=torch.randn_like,
     num_steps=18, sigma_min=0.002, sigma_max=80, rho=7,
-    S_churn=0, S_min=0, S_max=float('inf'), S_noise=1,
+    S_churn=0, S_min=0, S_max=float('inf'), S_noise=1, scaled=False
 ):
     # Adjust noise levels based on what's supported by the network.
     sigma_min = max(sigma_min, net.sigma_min)
@@ -37,8 +42,15 @@ def edm_sampler(
     t_steps = torch.cat([net.round_sigma(t_steps), torch.zeros_like(t_steps[:1])]) # t_N = 0
 
     # Main sampling loop.
+<<<<<<< Updated upstream
     x_next = latents.to(torch.float64) * t_steps[0]
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])): # 0, ..., N-1
+=======
+    x_next = latents.to(torch.float64) if scaled else latents.to(torch.float64) * t_steps[0] 
+    for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])): # 0, ..., N-1
+        if i < starting_step:
+            continue
+>>>>>>> Stashed changes
         x_cur = x_next
 
         # Increase noise temporarily.
@@ -59,6 +71,27 @@ def edm_sampler(
 
     return x_next
 
+<<<<<<< Updated upstream
+=======
+def reverse_edm_sampler(
+    images, 
+    num_steps, tot_steps=18, sigma_min=0.002, sigma_max=80, rho=7,
+    S_churn=0, S_min=0, S_max=float('inf'), S_noise=1,
+    randn_like=torch.randn_like,
+):
+    # Time step discretization.
+    t_steps = get_ddpm_time_discretization(tot_steps,sigma_min,sigma_max, rho, device=images.device)
+
+    # Main sampling loop.
+    x_next = images.to(torch.float64)
+    for i, (t_cur, t_next) in enumerate(reversed(list(zip(t_steps[:-1], t_steps[1:])))): # 0, ..., N-1
+        if i > num_steps:
+            break
+        dh = torch.abs(t_next-t_cur)
+        x_next+= randn_like(x_next)*torch.sqrt(2*t_cur*dh)
+    return x_next
+
+>>>>>>> Stashed changes
 #----------------------------------------------------------------------------
 # Generalized ablation sampler, representing the superset of all sampling
 # methods discussed in the paper.
@@ -213,6 +246,57 @@ def parse_int_list(s):
 
 #----------------------------------------------------------------------------
 
+<<<<<<< Updated upstream
+=======
+def bilinear_interpolation(images, new_height, new_width):
+    num, c, h, w = images.shape
+    x = np.linspace(0,1,num=h)
+    y = np.linspace(0,1,num=w)
+
+    x2 = np.linspace(0,1,num=new_height)
+    y2 = np.linspace(0,1,num=new_width)
+
+    upsampled_images = torch.zeros((num,c,new_height,new_width))
+
+    for i in range(num):
+        image = images[i]
+        for j in range(c):
+            cur = image[j]
+            f = interp2d(x,y,cur.to('cpu').numpy(),kind='linear')
+
+            upsampled_images[i,j,:,:] = torch.tensor(f(x2,y2))
+    return upsampled_images
+
+def bilinear_interpolation_weights(images, new_height, new_width):
+    from scipy.interpolate import interp2d
+    
+    num, c, h, w , d = images.shape
+    print(images.shape)
+    if h == new_height and w == new_width:
+        print("Skipping")
+        return images
+    x = np.linspace(0,1,num=h)
+    y = np.linspace(0,1,num=w)
+
+    x2 = np.linspace(0,1,num=new_height)
+    y2 = np.linspace(0,1,num=new_width)
+
+    upsampled_images = torch.zeros((num,c,new_height,new_width, d))
+
+    for i in range(num):
+        image = images[i]
+        for j in range(c):
+            cur = image[j]
+            for k in range(d):
+                curr = cur[:,:,k]
+                f = interp2d(y,x,curr.to('cpu').numpy(),kind='linear')
+
+                upsampled_images[i,j,:,:,k] = torch.tensor(f(y2,x2))
+    return upsampled_images.to(device='cuda:0')
+
+#----------------------------------------------------------------------------
+
+>>>>>>> Stashed changes
 @click.command()
 @click.option('--network', 'network_pkl',  help='Network pickle filename', metavar='PATH|URL',                      type=str, required=True)
 @click.option('--outdir',                  help='Where to save the output images', metavar='DIR',                   type=str, required=True)
@@ -234,9 +318,17 @@ def parse_int_list(s):
 @click.option('--disc', 'discretization',  help='Ablate time step discretization {t_i}', metavar='vp|ve|iddpm|edm', type=click.Choice(['vp', 've', 'iddpm', 'edm']))
 @click.option('--schedule',                help='Ablate noise schedule sigma(t)', metavar='vp|ve|linear',           type=click.Choice(['vp', 've', 'linear']))
 @click.option('--scaling',                 help='Ablate signal scaling s(t)', metavar='vp|none',                    type=click.Choice(['vp', 'none']))
+<<<<<<< Updated upstream
 @click.option('--img_resolution',                     help='Resolution at which to sample', metavar='INT',                     type=click.IntRange(min=32), default=32)
 
 def main(network_pkl, img_resolution, outdir, subdirs, seeds, class_idx, max_batch_size, device=torch.device('cuda'), **sampler_kwargs):
+=======
+@click.option('--img_resolution',          help='Resolution at which to sample', metavar='INT',                     type=click.IntRange(min=32), default=32)
+@click.option('--upsample_resolution',     help='Resolution at which to up sample', metavar='INT',                     type=click.IntRange(min=32), default=32)
+@click.option('--cascaded_diffusion_method', help='Cascaded diffusion method', metavar='denoising|random_sample|naive', type=click.Choice(['denoising','random_sample','naive']))
+
+def main(network_pkl, img_resolution, upsample_resolution, cascaded_diffusion_method, outdir, subdirs, seeds, class_idx, max_batch_size, device=torch.device('cuda'), **sampler_kwargs):
+>>>>>>> Stashed changes
     """Generate random images using the techniques described in the paper
     "Elucidating the Design Space of Diffusion-Based Generative Models".
 
@@ -266,6 +358,16 @@ def main(network_pkl, img_resolution, outdir, subdirs, seeds, class_idx, max_bat
     with dnnlib.util.open_url(network_pkl, verbose=(dist.get_rank() == 0)) as f:
         net = pickle.load(f)['ema'].to(device)
 
+    for name, param in net.named_parameters():
+        if bool(re.search('spectral_conv.weights',name)):
+            print("FOUND ",name,param.size())
+            inn, out, h, w , d = param.size()
+            param = bilinear_interpolation_weights(param, 2*h, 2*w)
+            print("NEW SIZE", param.size())
+    for name, param in net.named_parameters():
+        if bool(re.search('spectral_conv.weights',name)):
+            print("NEW SIZE", param.size())
+
     # Other ranks follow.
     if dist.get_rank() == 0:
         torch.distributed.barrier()
@@ -293,6 +395,24 @@ def main(network_pkl, img_resolution, outdir, subdirs, seeds, class_idx, max_bat
         have_ablation_kwargs = any(x in sampler_kwargs for x in ['solver', 'discretization', 'schedule', 'scaling'])
         sampler_fn = ablation_sampler if have_ablation_kwargs else edm_sampler
         images = sampler_fn(net, latents, class_labels, randn_like=rnd.randn_like, **sampler_kwargs)
+<<<<<<< Updated upstream
+=======
+        
+        up_sampled_images_noisy = bilinear_interpolation(images,upsample_resolution, upsample_resolution).to(device=device) 
+        
+        if cascaded_diffusion_method == 'naive':
+            up_sampled_images = sampler_fn(net,up_sampled_images_noisy,class_labels, starting_step = 14, randn_like=rnd.randn_like, **sampler_kwargs)
+        elif cascaded_diffusion_method == 'denoising':
+            num_steps = 4
+            denoised_samples = reverse_edm_sampler(up_sampled_images_noisy,num_steps=num_steps)
+            up_sampled_images = edm_sampler(net,denoised_samples,class_labels,starting_step=18-num_steps-1, randn_like=rnd.randn_like, scaled=True)
+        elif cascaded_diffusion_method == 'random_sample':
+            # TODO (kevin) : not hardcode this
+            num_steps = 18
+            t_steps = get_ddpm_time_discretization(num_steps=18,sigma_min=0.002,sigma_max=80, rho=7, device=latents.device)
+            denoised_samples = up_sampled_images_noisy + torch.randn_like(up_sampled_images_noisy)*t_steps[-num_steps-1]
+            up_sampled_images = edm_sampler(net,denoised_samples,class_labels,starting_step=18-num_steps-1, randn_like=rnd.randn_like, scaled=True)
+>>>>>>> Stashed changes
 
         # Save images.
         images_np = (images * 127.5 + 128).clip(0, 255).to(torch.uint8).permute(0, 2, 3, 1).cpu().numpy()

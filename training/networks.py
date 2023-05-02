@@ -152,12 +152,49 @@ class SpectralConv2d(nn.Module):
         # (batch, in_channel, x,y), (in_channel, out_channel, x,y) -> (batch, out_channel, x,y)
         return torch.einsum("bixyt,ioxyt->boxyt", input, weights)
 
+    def bilinear_interpolation(self, images, new_height, new_width):
+        from scipy.interpolate import interp2d
+        
+        num, c, h, w , d = images.shape
+        print(images.shape)
+        if h == new_height and w == new_width:
+            print("Skipping")
+            return images
+        x = np.linspace(0,1,num=h)
+        y = np.linspace(0,1,num=w)
+
+        x2 = np.linspace(0,1,num=new_height)
+        y2 = np.linspace(0,1,num=new_width)
+
+        upsampled_images = torch.zeros((num,c,new_height,new_width, d))
+
+        for i in range(num):
+            image = images[i]
+            for j in range(c):
+                cur = image[j]
+                for k in range(d):
+                    curr = cur[:,:,k]
+                    f = interp2d(y,x,curr.to('cpu').numpy(),kind='linear')
+
+                    upsampled_images[i,j,:,:,k] = torch.tensor(f(y2,x2))
+        return upsampled_images.to(device='cuda:0')
+
     # Downsampling by truncating fourier modes?
     def forward(self, x, out_h=None, out_w=None):
         # TODO(dahoas): Fix hack
         print("Spec conv input, weights: ", x.shape, self.weights1.shape) if self.verbose else None
-        w1 = self.weights1.to(x.dtype)
-        w2 = self.weights2.to(x.dtype)
+        if self.modes1 == 16 and self.modes2 == 9:
+            self.modes1 = 32
+            self.modes2 = 18
+            self.neww1 = self.bilinear_interpolation(self.weights1, self.modes1,self.modes2)
+            self.neww2 = self.bilinear_interpolation(self.weights2, self.modes1,self.modes2)
+        else:
+            print("Not again haha")
+        print("Changed the weights")
+
+        w1 = self.neww1.to(x.dtype)
+        w2 = self.neww2.to(x.dtype)
+
         batchsize, c, h, w = x.shape
         if out_h is None and out_w is None:
             if self.down:
