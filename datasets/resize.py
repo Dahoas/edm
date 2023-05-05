@@ -33,10 +33,10 @@ def downscale(zip_file_name, resize, file_names, out_folder):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_name", default="ffhq", type=str)
+    parser.add_argument("--dataset_name", default="lsun_church", type=str)
     parser.add_argument("--size", default=32, type=int)
     parser.add_argument("--num_procs", default=24, type=int)
-    parser.add_argument("--input_file_name", default="ffhq-256x256.zip", type=str)
+    parser.add_argument("--input_file_name", default="church_256.zip", type=str)
     parser.add_argument("--output_folder_name", default=None, type=str)
     args = parser.parse_args()
     file_name = args.input_file_name
