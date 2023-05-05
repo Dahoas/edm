@@ -9,13 +9,18 @@ import os
 from tqdm import tqdm
 import argparse
 import multiprocessing as mp
+import glob
 
 
 def downscale(zip_file_name, resize, file_names, out_folder):
-    file = zipfile.ZipFile(zip_file_name)
+    if not os.path.isdir(zip_file_name):
+        file = zipfile.ZipFile(zip_file_name)
     for i, file_name in tqdm(enumerate(file_names)):
         try:
-            im_file = file.open(file_name, "r")
+            if os.path.isdir(zip_file_name):
+                im_file = file_name
+            else:
+                im_file = file.open(file_name, "r")
             image = PIL.Image.open(im_file)
             image = resize(image)
             if i == 0:
@@ -44,8 +49,11 @@ if __name__ == "__main__":
     print("Resizing {} to {}...".format(file_name, args.size))
     print(f"Putting results in {out_folder}")
 
-    file = zipfile.ZipFile(file_name)
-    file_names = list(filter(lambda f: ".png" in f, file.namelist()))
+    if os.path.isdir(file_name):
+        file_names = list(glob.glob(os.path.join(file_name, "*.png")))
+    else:
+        file = zipfile.ZipFile(file_name)
+        file_names = list(filter(lambda f: ".png" in f, file.namelist()))
     batch_size = len(file_names) // args.num_procs + args.num_procs
     file_name_batches = [file_names[i * batch_size : (i+1) * batch_size] for i in range(args.num_procs)]
 
