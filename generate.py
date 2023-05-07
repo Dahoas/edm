@@ -260,6 +260,16 @@ def bilinear_interpolation(images, new_height, new_width):
 
             upsampled_images[i,j,:,:] = torch.tensor(f(x2,y2))
     return upsampled_images
+
+def create_matrix(n,k, gamma, beta):
+    A = torch.zeros(k,n,device='cuda:0')
+    for i in range(n):
+        A[i,i] = 1.
+    for i in range(k-n):
+        A[n+i,-2] = -gamma*(i+1)
+        A[n+i,-1] = beta + gamma*(i+1)
+    return A
+
 #----------------------------------------------------------------------------
 
 @click.command()
@@ -317,6 +327,34 @@ def main(network_pkl, img_resolution, super_resolution, cascaded_diffusion_metho
     with dnnlib.util.open_url(network_pkl, verbose=(dist.get_rank() == 0)) as f:
         net = pickle.load(f)['ema'].to(device)
 
+
+    # for name, param in net.named_parameters():
+    #     if bool(re.search('spectral_conv.weights',name)):
+    #         in_, out_, n, m , _ = param.size()
+    #         new_n = 2*n
+    #         new_m = new_n//2 + 1
+    #         gamma = .1
+    #         beta = .3
+    #         A = create_matrix(n,new_n,gamma,beta)
+    #         B = create_matrix(m,new_m, gamma, beta).T
+    #         A = A.repeat((in_,1,1))
+    #         B = B.repeat((in_,1,1))
+    #         new_param = torch.zeros((in_,out_,new_n, new_m, _),device='cuda:0')
+
+    #         for i in range(2):
+    #             for k in range(out_):
+    #                 if(bool(re.search('weights2',name))):
+    #                     new_param[:,k,:,:,i] = torch.bmm(torch.bmm(A, param[:,k,:,:,i].flip(1)), B).flip(1)
+    #                 else:
+    #                     new_param[:,k,:,:,i] = torch.bmm(torch.bmm(A, param[:,k,:,:,i]), B)
+    #         param.data = new_param
+
+
+    # print("FINISHED MAKING THE CHANGES")
+    # for name, param in net.named_parameters():
+    #     if bool(re.search('spectral_conv.weights',name)):
+    #         print(name, param.size())       
+
     # Other ranks follow.
     if dist.get_rank() == 0:
         torch.distributed.barrier()
@@ -345,22 +383,23 @@ def main(network_pkl, img_resolution, super_resolution, cascaded_diffusion_metho
         sampler_fn = ablation_sampler if have_ablation_kwargs else edm_sampler
         images = sampler_fn(net, latents, class_labels, randn_like=rnd.randn_like, **sampler_kwargs)
         
-        # up_sampled_images_noisy = bilinear_interpolation(images,super_resolution, super_resolution).to(device=device) 
+        up_sampled_images_noisy = bilinear_interpolation(images,super_resolution, super_resolution).to(device=device) 
         
-        # if cascaded_diffusion_method == 'naive':
-        #     up_sampled_images = sampler_fn(net,up_sampled_images_noisy,class_labels, starting_step = 14, randn_like=rnd.randn_like, **sampler_kwargs)
-        # elif cascaded_diffusion_method == 'denoising':
-        #     num_steps = 3
-        #     denoised_samples = reverse_edm_sampler(up_sampled_images_noisy,num_steps=num_steps)
-        #     up_sampled_images = edm_sampler(net,denoised_samples,class_labels,starting_step=18-num_steps-1, randn_like=rnd.randn_like)
-        # elif cascaded_diffusion_method == 'random_sample':
-        #     # TODO (kevin) : not hardcode this
-        #     num_steps = 4
-        #     t_steps = get_ddpm_time_discretization(num_steps=18,sigma_min=0.002,sigma_max=80, rho=7, device=latents.device)
-        #     denoised_samples = up_sampled_images_noisy + torch.randn_like(up_sampled_images_noisy)*t_steps[-num_steps]
-        #     up_sampled_images = edm_sampler(net,denoised_samples,class_labels,starting_step=18-num_steps-1, randn_like=rnd.randn_like)
+        if cascaded_diffusion_method == 'naive':
+            up_sampled_images = sampler_fn(net,up_sampled_images_noisy,class_labels, starting_step = 14, randn_like=rnd.randn_like, **sampler_kwargs)
+        elif cascaded_diffusion_method == 'denoising':
+            num_steps = 3
+            denoised_samples = reverse_edm_sampler(up_sampled_images_noisy,num_steps=num_steps)
+            up_sampled_images = edm_sampler(net,denoised_samples,class_labels,starting_step=18-num_steps-1, randn_like=rnd.randn_like)
+        elif cascaded_diffusion_method == 'random_sample':
+            # TODO (kevin) : not hardcode this
+            num_steps = 5
+            t_steps = get_ddpm_time_discretization(num_steps=18,sigma_min=0.002,sigma_max=80, rho=7, device=latents.device)
+            denoised_samples = up_sampled_images_noisy + torch.randn_like(up_sampled_images_noisy)*t_steps[-num_steps]
+            up_sampled_images = edm_sampler(net,denoised_samples,class_labels,starting_step=18-num_steps-1, randn_like=rnd.randn_like)
 
         # Save images.
+        originals = up_sampled_images
         originals = to_image_numpy(images)
         # denoised = to_image_numpy(denoised_samples)
         # bilinear_images = to_image_numpy(up_sampled_images_noisy)
