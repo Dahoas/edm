@@ -19,6 +19,7 @@ import PIL.Image
 import dnnlib
 from torch_utils import distributed as dist
 from scipy.interpolate import interp2d
+from torch.nn.functional import interpolate
 #----------------------------------------------------------------------------
 # Proposed EDM sampler (Algorithm 2).
 
@@ -328,31 +329,41 @@ def main(network_pkl, img_resolution, super_resolution, cascaded_diffusion_metho
         net = pickle.load(f)['ema'].to(device)
 
 
-    # for name, param in net.named_parameters():
-    #     if bool(re.search('spectral_conv.weights',name)):
-    #         in_, out_, n, m , _ = param.size()
-    #         new_n = 2*n
-    #         new_m = new_n//2 + 1
-    #         gamma = .1
-    #         beta = .3
-    #         A = create_matrix(n,new_n,gamma,beta)
-    #         B = create_matrix(m,new_m, gamma, beta).T
-    #         A = A.repeat((in_,1,1))
-    #         B = B.repeat((in_,1,1))
-    #         new_param = torch.zeros((in_,out_,new_n, new_m, _),device='cuda:0')
+    for name, param in net.named_parameters():
+        if bool(re.search('spectral_conv.weights',name)):
+            in_, out_, n, m , _ = param.size()
+            new_n = 2*n
+            new_m = new_n//2 + 1
+            gamma = .1
+            beta = .3
+            A = create_matrix(n,new_n,gamma,beta)
+            B = create_matrix(m,new_m, gamma, beta).T
+            A = A.repeat((in_,1,1))
+            B = B.repeat((in_,1,1))
+            new_param = torch.zeros((in_,out_,new_n, new_m, _),device='cuda:0')
 
-    #         for i in range(2):
-    #             for k in range(out_):
-    #                 if(bool(re.search('weights2',name))):
-    #                     new_param[:,k,:,:,i] = torch.bmm(torch.bmm(A, param[:,k,:,:,i].flip(1)), B).flip(1)
-    #                 else:
-    #                     new_param[:,k,:,:,i] = torch.bmm(torch.bmm(A, param[:,k,:,:,i]), B)
+            for i in range(2):
+                for k in range(out_):
+                    p = param[:,k,:,:,i]
+                    p = torch.log(p)
+                    if(bool(re.search('weights2',name))):
+                        new_param[:,k,:,:,i] = torch.bmm(torch.bmm(A, p.flip(1)), B).flip(1)
+                    else:
+                        new_param[:,k,:,:,i] = torch.bmm(torch.bmm(A, p), B)
+            # new_param = torch.exp(new_param)
+            param.data = new_param
+    # for name, param in net.named_parameters():
+    #     if bool(re.search('spatial_conv.weight',name)):
+    #         in_, out_, n, m = param.size()
+    #         new_n = 2*n-1
+    #         new_m = 2*m-1
+    #         new_param = interpolate(param,(new_n, new_m),mode='bilinear')
     #         param.data = new_param
 
 
     # print("FINISHED MAKING THE CHANGES")
     # for name, param in net.named_parameters():
-    #     if bool(re.search('spectral_conv.weights',name)):
+    #     if bool(re.search('spectral_conv.weights',name)) or bool(re.search('spatial_conv.weight',name)) :
     #         print(name, param.size())       
 
     # Other ranks follow.
@@ -383,23 +394,22 @@ def main(network_pkl, img_resolution, super_resolution, cascaded_diffusion_metho
         sampler_fn = ablation_sampler if have_ablation_kwargs else edm_sampler
         images = sampler_fn(net, latents, class_labels, randn_like=rnd.randn_like, **sampler_kwargs)
         
-        up_sampled_images_noisy = bilinear_interpolation(images,super_resolution, super_resolution).to(device=device) 
+        # up_sampled_images_noisy = bilinear_interpolation(images,super_resolution, super_resolution).to(device=device) 
         
-        if cascaded_diffusion_method == 'naive':
-            up_sampled_images = sampler_fn(net,up_sampled_images_noisy,class_labels, starting_step = 14, randn_like=rnd.randn_like, **sampler_kwargs)
-        elif cascaded_diffusion_method == 'denoising':
-            num_steps = 3
-            denoised_samples = reverse_edm_sampler(up_sampled_images_noisy,num_steps=num_steps)
-            up_sampled_images = edm_sampler(net,denoised_samples,class_labels,starting_step=18-num_steps-1, randn_like=rnd.randn_like)
-        elif cascaded_diffusion_method == 'random_sample':
-            # TODO (kevin) : not hardcode this
-            num_steps = 5
-            t_steps = get_ddpm_time_discretization(num_steps=18,sigma_min=0.002,sigma_max=80, rho=7, device=latents.device)
-            denoised_samples = up_sampled_images_noisy + torch.randn_like(up_sampled_images_noisy)*t_steps[-num_steps]
-            up_sampled_images = edm_sampler(net,denoised_samples,class_labels,starting_step=18-num_steps-1, randn_like=rnd.randn_like)
+        # if cascaded_diffusion_method == 'naive':
+        #     up_sampled_images = sampler_fn(net,up_sampled_images_noisy,class_labels, starting_step = 14, randn_like=rnd.randn_like, **sampler_kwargs)
+        # elif cascaded_diffusion_method == 'denoising':
+        #     num_steps = 3
+        #     denoised_samples = reverse_edm_sampler(up_sampled_images_noisy,num_steps=num_steps)
+        #     up_sampled_images = edm_sampler(net,denoised_samples,class_labels,starting_step=18-num_steps-1, randn_like=rnd.randn_like)
+        # elif cascaded_diffusion_method == 'random_sample':
+        #     # TODO (kevin) : not hardcode this
+        #     num_steps = 5
+        #     t_steps = get_ddpm_time_discretization(num_steps=18,sigma_min=0.002,sigma_max=80, rho=7, device=latents.device)
+        #     denoised_samples = up_sampled_images_noisy + torch.randn_like(up_sampled_images_noisy)*t_steps[-num_steps]
+        #     up_sampled_images = edm_sampler(net,denoised_samples,class_labels,starting_step=18-num_steps-1, randn_like=rnd.randn_like)
 
         # Save images.
-        originals = up_sampled_images
         originals = to_image_numpy(images)
         # denoised = to_image_numpy(denoised_samples)
         # bilinear_images = to_image_numpy(up_sampled_images_noisy)
