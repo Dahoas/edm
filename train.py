@@ -48,7 +48,7 @@ def parse_int_list(s):
 @click.option('--arch',          help='Network architecture', metavar='ddpmpp|ncsnpp|adm',          type=click.Choice(['ddpmpp', 'ncsnpp', 'adm']), default='ddpmpp', show_default=True)
 @click.option('--precond',       help='Preconditioning & loss function', metavar='vp|ve|edm',       type=click.Choice(['vp', 've', 'edm']), default='edm', show_default=True)
 @click.option('--n_res_blocks',  help='Num res blocks per level', metavar='INT',                    type=int)
-@click.option('--mode',          help='Spatial/spectral modes to use', metavar='def|fourier|dual',  type=click.Choice(['def', 'fourier', 'dual']), default='def', show_default=True)
+@click.option('--mode',          help='Spatial/spectral modes to use', metavar='def|fourier|dual|fno',  type=click.Choice(['def', 'fourier', 'dual','fno']), default='def', show_default=True)
 @click.option('--random_fourier',help='Pass data through a random fourier projection',              type=bool, default=False)
 @click.option('--noise_type',    help='Noise type',                                                 type=str, default='gaussian')
 

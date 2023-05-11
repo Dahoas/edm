@@ -1,0 +1,93 @@
+original_fno:
+  arch: 'tfno2d'
+
+  tfno2d:
+    modes_height: 64
+    modes_width: 64
+    width: 64
+    fc_channels: 256
+    n_layers: 4
+    domain_padding: 0.078125
+    domain_padding_mode: 'one-sided'
+    fft_norm: 'forward'
+    norm: None
+    skip: 'linear'
+    
+    use_mlp: 0
+    mlp:
+        expansion: 0.5
+        dropout: 0
+
+    separable: False
+    factorization: None
+    rank: 1.0
+    fixed_rank_modes: None
+
+  wandb:
+    log: True
+    name: None # If None, config will be used but you can override it here
+    group: 'comparisons'
+    
+original_fno_GN:
+  arch: 'tfno2d'
+
+  tfno2d:
+    modes_height: 64
+    modes_width: 64
+    width: 64
+    fc_channels: 256
+    n_layers: 4
+    domain_padding: 0.078125
+    domain_padding_mode: 'one-sided'
+    fft_norm: 'forward'
+    norm: None
+    preactivation: False
+    skip: 'linear'
+    
+    use_mlp: 0
+    mlp:
+        expansion: 0.5
+        dropout: 0
+
+    separable: False
+    factorization: None
+    rank: 1.0
+    fixed_rank_modes: None
+
+  wandb:
+    log: True
+    name: None # If None, config will be used but you can override it here
+    group: 'comparisons' 
+
+
+GN_fno_linear_skip_preact:
+  arch: 'tfno2d'
+
+  tfno2d: 
+    modes_height: 64
+    modes_width: 64
+    width: 64
+    fc_channels: 256
+    n_layers: 4
+    domain_padding: 0.078125
+    domain_padding_mode: 'one-sided'
+    fft_norm: 'forward'
+    norm: 'group_norm'
+    skip: 'linear'
+    
+    use_mlp: 0
+    mlp:
+        expansion: 0.5
+        dropout: 0
+
+    separable: False
+    factorization: None
+    rank: 1.0
+    fixed_rank_modes: None
+
+  wandb:
+    log: True
+    name: None # If None, config will be used but you can override it here
+    group: 'comparisons' 
+
+  
