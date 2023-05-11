@@ -329,29 +329,29 @@ def main(network_pkl, img_resolution, super_resolution, cascaded_diffusion_metho
         net = pickle.load(f)['ema'].to(device)
 
 
-    for name, param in net.named_parameters():
-        if bool(re.search('spectral_conv.weights',name)):
-            in_, out_, n, m , _ = param.size()
-            new_n = 2*n
-            new_m = new_n//2 + 1
-            gamma = .1
-            beta = .3
-            A = create_matrix(n,new_n,gamma,beta)
-            B = create_matrix(m,new_m, gamma, beta).T
-            A = A.repeat((in_,1,1))
-            B = B.repeat((in_,1,1))
-            new_param = torch.zeros((in_,out_,new_n, new_m, _),device='cuda:0')
+    # for name, param in net.named_parameters():
+    #     if bool(re.search('spectral_conv.weights',name)):
+    #         in_, out_, n, m , _ = param.size()
+    #         new_n = 2*n
+    #         new_m = new_n//2 + 1
+    #         gamma = .1
+    #         beta = .3
+    #         A = create_matrix(n,new_n,gamma,beta)
+    #         B = create_matrix(m,new_m, gamma, beta).T
+    #         A = A.repeat((in_,1,1))
+    #         B = B.repeat((in_,1,1))
+    #         new_param = torch.zeros((in_,out_,new_n, new_m, _),device='cuda:0')
 
-            for i in range(2):
-                for k in range(out_):
-                    p = param[:,k,:,:,i]
-                    p = torch.log(p)
-                    if(bool(re.search('weights2',name))):
-                        new_param[:,k,:,:,i] = torch.bmm(torch.bmm(A, p.flip(1)), B).flip(1)
-                    else:
-                        new_param[:,k,:,:,i] = torch.bmm(torch.bmm(A, p), B)
-            # new_param = torch.exp(new_param)
-            param.data = new_param
+    #         for i in range(2):
+    #             for k in range(out_):
+    #                 p = param[:,k,:,:,i]
+    #                 p = torch.log(p)
+    #                 if(bool(re.search('weights2',name))):
+    #                     new_param[:,k,:,:,i] = torch.bmm(torch.bmm(A, p.flip(1)), B).flip(1)
+    #                 else:
+    #                     new_param[:,k,:,:,i] = torch.bmm(torch.bmm(A, p), B)
+    #         # new_param = torch.exp(new_param)
+    #         param.data = new_param
     # for name, param in net.named_parameters():
     #     if bool(re.search('spatial_conv.weight',name)):
     #         in_, out_, n, m = param.size()

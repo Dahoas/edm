@@ -171,7 +171,7 @@ class SpectralConv2d(nn.Module):
                 out_w = w
         #Compute Fourier coeffcients up to factor of e^(- something constant)
         x_ft = torch.fft.rfft2(x)
-        x_ft = torch.log(x_ft)
+        # x_ft = torch.log(x_ft)
         x_ft = torch.view_as_real(x_ft)
 
         # Multiply relevant Fourier modes
@@ -182,15 +182,15 @@ class SpectralConv2d(nn.Module):
         print("out_ft shape: {}".format(out_ft.shape)) if self.verbose else None
         modes1 = self.modes1
         modes2 = self.modes2
-        modes1 = 2*modes1
-        modes2 = modes1//2 + 1
+        # modes1 = 2*modes1
+        # modes2 = modes1//2 + 1
         out_ft[:, :, :modes1, :modes2] = self.compl_mul2d(x_ft[:, :, :modes1, :modes2], w1)
         # TODO(dahoas): Sampling from the end samples higher modes for larger images
         out_ft[:, :, -modes1:, :modes2] = self.compl_mul2d(x_ft[:, :, -modes1:, :modes2], w2)
 
         #Return to physical space
         out_ft = torch.view_as_complex(out_ft)
-        out_ft = torch.exp(out_ft)
+        # out_ft = torch.exp(out_ft)
         x = torch.fft.irfft2(out_ft, s=(out_h, out_w))
         print("Spectral out x shape: {}".format(x.shape)) if self.verbose else None
         return x

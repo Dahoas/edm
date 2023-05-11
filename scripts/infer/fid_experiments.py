@@ -2,8 +2,8 @@ import os
 
 
 if __name__ == "__main__":
-    model_path = "lsun_church_training-runs/00001-____-uncond-ddpmpp-edm-gpus8-batch256-fp32/network-snapshot-102861.pkl"
-    resolutions = [32,64,128]
+    model_path = "lsun-training-runs/00003-lsun_church_96x96-uncond-ddpmpp-edm-gpus8-batch256-fp16/network-snapshot-056448.pkl"
+    resolutions = [32,64,96, 128, 160]
     out_folder = "lsun_{}_fid_samples"
     ref_path = "datasets/lsun_church_{}.npz"
     for res in resolutions: 
