@@ -189,6 +189,235 @@ class SpectralConv2d(nn.Module):
         print("Spectral out x shape: {}".format(x.shape)) if self.verbose else None
         return x
 
+#---------------------------------------------------------------------------
+
+class FNOBlocks(nn.Module):
+    def __init__(self, in_channels, out_channels, n_modes,
+                 output_scaling_factor=None,
+                 n_layers=1,
+                 incremental_n_modes=None,
+                 use_mlp=False, mlp=None,
+                 non_linearity=F.gelu,
+                 norm=None, preactivation=False,
+                 fno_skip='linear',
+                 mlp_skip='soft-gating',
+                 separable=False,
+                 factorization=None,
+                 rank=1.0,
+                 SpectralConv=SpectralConv2d,
+                 joint_factorization=False, 
+                 fixed_rank_modes=False,
+                 implementation='factorized',
+                 decomposition_kwargs=dict(),
+                 fft_norm='forward',
+                 **kwargs):
+        super().__init__()
+        if isinstance(n_modes, int):
+            n_modes = [n_modes]
+        self.n_modes = n_modes
+        self.n_dim = len(n_modes)
+
+        if output_scaling_factor is not None:
+            if isinstance(output_scaling_factor, (float, int)):
+                output_scaling_factor = [float(output_scaling_factor)]*len(self.n_modes)
+        self.output_scaling_factor = output_scaling_factor
+
+        self._incremental_n_modes = incremental_n_modes
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.n_layers = n_layers
+        self.joint_factorization = joint_factorization
+        self.non_linearity = non_linearity
+        self.rank = rank
+        self.factorization = factorization
+        self.fixed_rank_modes = fixed_rank_modes
+        self.decomposition_kwargs = decomposition_kwargs
+        self.fno_skip = fno_skip,
+        self.mlp_skip = mlp_skip,
+        self.fft_norm = fft_norm
+        self.implementation = implementation
+        self.separable = separable
+        self.preactivation = preactivation
+
+        self.convs = SpectralConv(
+                self.in_channels, self.out_channels, self.n_modes, 
+                output_scaling_factor=output_scaling_factor,
+                incremental_n_modes=incremental_n_modes,
+                rank=rank,
+                fft_norm=fft_norm,
+                fixed_rank_modes=fixed_rank_modes, 
+                implementation=implementation,
+                separable=separable,
+                factorization=factorization,
+                decomposition_kwargs=decomposition_kwargs,
+                joint_factorization=joint_factorization,
+                n_layers=n_layers,
+            )
+
+        self.fno_skips = nn.ModuleList([skip_connection(self.in_channels, self.out_channels, type=fno_skip, n_dim=self.n_dim) for _ in range(n_layers)])
+
+        if use_mlp:
+            self.mlp = nn.ModuleList(
+                [MLP(in_channels=self.out_channels, 
+                     hidden_channels=int(round(self.out_channels*mlp['expansion'])),
+                     dropout=mlp['dropout'], n_dim=self.n_dim) for _ in range(n_layers)]
+            )
+            self.mlp_skips = nn.ModuleList([skip_connection(self.in_channels, self.out_channels, type=mlp_skip, n_dim=self.n_dim) for _ in range(n_layers)])
+        else:
+            self.mlp = None
+
+        # Each block will have 2 norms if we also use an MLP
+        self.n_norms = 1 if self.mlp is None else 2
+        if norm is None:
+            self.norm = None
+        elif norm == 'instance_norm':
+            self.norm = nn.ModuleList([getattr(nn, f'InstanceNorm{self.n_dim}d')(num_features=self.out_channels) for _ in range(n_layers*self.n_norms)])
+        elif norm == 'group_norm':
+            self.norm = nn.ModuleList([nn.GroupNorm(num_groups=1, num_channels=self.out_channels) for _ in range(n_layers*self.n_norms)])
+        elif norm == 'layer_norm':
+            self.norm = nn.ModuleList([nn.LayerNorm(elementwise_affine=False) for _ in range(n_layers*self.n_norms)])
+        else:
+            raise ValueError(f'Got {norm=} but expected None or one of [instance_norm, group_norm, layer_norm]')
+
+    def forward(self, x, index=0):
+        x_skip_fno = self.fno_skips[index](x)
+
+        x_fno = self.convs(x, index)
+
+        x = x_fno + x_skip_fno
+
+        if not self.preactivation and (self.mlp is not None) or (index < (self.n_layers - index)):
+            x = self.non_linearity(x)
+
+        if self.mlp is not None:
+            x_skip_mlp = self.mlp_skips[index](x)
+
+        if self.mlp is not None:
+            # x_skip = self.mlp_skips[index](x)
+            x = self.mlp[index](x) + x_skip_mlp
+
+            if index < (self.n_layers - 1):
+                x = self.non_linearity(x)
+        return x
+
+
+class MLP(nn.Module):
+    """A Multi-Layer Perceptron, with arbitrary number of layers
+    
+    Parameters
+    ----------
+    in_channels : int
+    out_channels : int, default is None
+        if None, same is in_channels
+    hidden_channels : int, default is None
+        if None, same is in_channels
+    n_layers : int, default is 2
+        number of linear layers in the MLP
+    non_linearity : default is F.gelu
+    dropout : float, default is 0
+        if > 0, dropout probability
+    """
+    def __init__(self, in_channels, out_channels=None, hidden_channels=None, 
+                 n_layers=2, n_dim=2, non_linearity=F.gelu, dropout=0., **kwargs):
+        super().__init__()
+        self.n_layers = n_layers
+        self.in_channels = in_channels
+        self.out_channels = in_channels if out_channels is None else out_channels
+        self.hidden_channels = in_channels if hidden_channels is None else hidden_channels 
+        self.non_linearity = non_linearity
+        self.dropout = nn.ModuleList([nn.Dropout(dropout) for _ in range(n_layers)]) if dropout > 0. else None
+        
+        Conv = getattr(nn, f'Conv{n_dim}d')
+        self.fcs = nn.ModuleList()
+        for i in range(n_layers):
+            if i == 0:
+                self.fcs.append(Conv(self.in_channels, self.hidden_channels, 1))
+            elif i == (n_layers - 1):
+                self.fcs.append(Conv(self.hidden_channels, self.out_channels, 1))
+            else:
+                self.fcs.append(Conv(self.hidden_channels, self.hidden_channels, 1))
+
+    def forward(self, x):
+        for i, fc in enumerate(self.fcs):
+            x = fc(x)
+            if i < self.n_layers:
+                x = self.non_linearity(x)
+            if self.dropout is not None:
+                x = self.dropout(x)
+
+        return x
+
+
+def skip_connection(in_features, out_features, n_dim=2, bias=False, type="soft-gating"):
+    """A wrapper for several types of skip connections.
+    Returns an nn.Module skip connections, one of  {'identity', 'linear', soft-gating'}
+
+    Parameters
+    ----------
+    in_features : int
+        number of input features
+    out_features : int
+        number of output features
+    n_dim : int, default is 2
+        Dimensionality of the input (excluding batch-size and channels).
+        ``n_dim=2`` corresponds to having Module2D. 
+    bias : bool, optional
+        whether to use a bias, by default False
+    type : {'identity', 'linear', soft-gating'}
+        kind of skip connection to use, by default "soft-gating"
+
+    Returns
+    -------
+    nn.Module
+        module that takes in x and returns skip(x)
+    """
+    if type.lower() == 'soft-gating':
+        return SoftGating(in_features=in_features, out_features=out_features, bias=bias, n_dim=n_dim)
+    elif type.lower() == 'linear':
+        return getattr(nn, f'Conv{n_dim}d')(in_channels=in_features, out_channels=out_features, kernel_size=1, bias=bias)
+    elif type.lower() == 'identity':
+        return nn.Identity()
+    else:
+        raise ValueError(f"Got skip-connection {type=}, expected one of {'soft-gating', 'linear', 'id'}.")
+
+
+class SoftGating(nn.Module):
+    """Applies soft-gating by weighting the channels of the given input
+
+    Given an input x of size `(batch-size, channels, height, width)`,
+    this returns `x * w `
+    where w is of shape `(1, channels, 1, 1)`
+
+    Parameters
+    ----------
+    in_features : int
+    out_features : None
+        this is provided for API compatibility with nn.Linear only
+    n_dim : int, default is 2
+        Dimensionality of the input (excluding batch-size and channels).
+        ``n_dim=2`` corresponds to having Module2D. 
+    bias : bool, default is False
+    """
+    def __init__(self, in_features, out_features=None, n_dim=2, bias=False):
+        super().__init__()
+        if out_features is not None and in_features != out_features:
+            raise ValueError(f"Got {in_features=} and {out_features=}"
+                             "but these two must be the same for soft-gating")
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = nn.Parameter(torch.ones(1, self.in_features, *(1,)*n_dim))
+        if bias:
+            self.bias = nn.Parameter(torch.ones(1, self.in_features, *(1,)*n_dim))
+        else:
+            self.bias = None
+
+    def forward(self, x):
+        """Applies soft-gating to a batch of activations
+        """
+        if self.bias is not None:
+            return self.weight*x + self.bias
+        else:
+            return self.weight*x
 
 #---------------------------------------------------------------------------
 class DualConv(nn.Module):
