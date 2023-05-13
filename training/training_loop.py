@@ -96,15 +96,15 @@ def training_loop(
     dist.print0('Constructing network...')
     interface_kwargs = dict(img_channels=dataset_obj.num_channels, label_dim=dataset_obj.label_dim)
     # net = dnnlib.util.construct_class_by_name(**network_kwargs, **interface_kwargs) # subclass of torch.nn.Module
-    net = FNO(n_modes=(16, 16), hidden_channels=64, in_channels=3, out_channels=1)
+    net = FNO(n_modes=(16, 16), hidden_channels=64, in_channels=3, out_channels=3).to(device=device)
 
     net.train().requires_grad_(True).to(device)
     if dist.get_rank() == 0:
         with torch.no_grad():
-            images = torch.zeros([bg, net.img_channels, dataset_obj.resolution, dataset_obj.resolution], device=device)
+            images = torch.zeros([bg, 3, dataset_obj.resolution, dataset_obj.resolution], device=device)
             sigma = torch.ones([bg], device=device)
-            labels = torch.zeros([bg, net.label_dim], device=device)
-            misc.print_module_summary(net, [images, sigma, labels], max_nesting=2)
+            labels = torch.zeros([bg, 0], device=device)
+            # misc.print_module_summary(net, [images, sigma, labels], max_nesting=2)
     
     # Setup optimizer.
     dist.print0('Setting up optimizer...')

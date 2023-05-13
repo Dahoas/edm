@@ -3,3 +3,4 @@ torchrun --standalone --nproc_per_node=8 train.py --outdir=lsun-training-runs \
      --arch=ddpmpp --mode="dual" --batch 256 \
     --model_config_path model_configs/small_ffhq.yml \
     --lr 5e-4 --tick 25 --snap 100 --dump 100 
+    --resume lsun-training-runs/00003-lsun_church_96x96-uncond-ddpmpp-edm-gpus8-batch256-fp16/training-state-050176.pt
