@@ -289,9 +289,9 @@ class DualUNetBlock(torch.nn.Module):
 
 
         self.norm0 = GroupNorm(num_channels=in_channels, eps=eps)
-        self.conv0 = DualConv(in_channels=in_channels, out_channels=out_channels, kernel=3, up=up, down=down, resample_filter=resample_filter, **init,
+        self.conv0 = DualConv(in_channels=in_channels, out_channels=out_channels, kernel=1, up=up, down=down, resample_filter=resample_filter, **init,
                               modes1=modes1, modes2=modes2, use_spatial=use_spatial, use_spectral=use_spectral, verbose=verbose)
-        self.conv1 = DualConv(in_channels=out_channels, out_channels=out_channels, kernel=3, resample_filter=resample_filter, **init_zero,
+        self.conv1 = DualConv(in_channels=out_channels, out_channels=out_channels, kernel=1, resample_filter=resample_filter, **init_zero,
                               modes1=modes1, modes2=modes2, use_spatial=use_spatial, use_spectral=use_spectral, verbose=verbose)
 
         self.affine = Linear(in_features=emb_channels, out_features=out_channels*(2 if adaptive_scale else 1), **init)
@@ -438,7 +438,7 @@ class DualUNet(torch.nn.Module):
             if level == 0:
                 cin = cout
                 cout = model_channels
-                self.enc[f'{level}_conv'] = DualConv(in_channels=cin, out_channels=cout, kernel=3, modes1=modes1, modes2=modes2, use_spatial=block_kwargs["use_spatial"], use_spectral=block_kwargs["use_spectral"], **init)
+                self.enc[f'{level}_conv'] = DualConv(in_channels=cin, out_channels=cout, kernel=1, modes1=modes1, modes2=modes2, use_spatial=block_kwargs["use_spatial"], use_spectral=block_kwargs["use_spectral"], **init)
             else:
                 self.enc[f'{level}_down'] = DualUNetBlock(in_channels=cout, out_channels=cout, down=True, modes1=modes1, modes2=modes2, **block_kwargs)
             for idx in range(num_blocks):
@@ -471,7 +471,7 @@ class DualUNet(torch.nn.Module):
                 self.dec[f'{level}_block{idx}'] = DualUNetBlock(in_channels=cin, out_channels=cout, attention=attn, modes1=modes1, modes2=modes2, **block_kwargs)
             if level == 0:
                 self.dec[f'{level}_aux_norm'] = GroupNorm(num_channels=cout, eps=1e-6)
-                self.dec[f'{level}_aux_conv'] = DualConv(in_channels=cout, out_channels=out_channels, kernel=3, modes1=modes1, modes2=modes2, use_spatial=block_kwargs["use_spatial"], use_spectral=block_kwargs["use_spectral"], **init_zero)
+                self.dec[f'{level}_aux_conv'] = DualConv(in_channels=cout, out_channels=out_channels, kernel=1, modes1=modes1, modes2=modes2, use_spatial=block_kwargs["use_spatial"], use_spectral=block_kwargs["use_spectral"], **init_zero)
 
     def fourier_projection(self, v):
         B = self.random_projection_matrix
