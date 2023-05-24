@@ -1,6 +1,8 @@
 # Dual-FNO UNet: scale-robust diffusion model for zero-shot super-resolution image generation
 
-This repo is adapted from [EDM repo](https://github.com/NVlabs/edm) from NVIDIA, used under CC BY 4.0. Our work "Dual-FNO UNet: scale-robust diffusion model for zero-shot super-resolution image generation" is licensed under CC BY 4.0. 
+This repo is adapted from [EDM repo](https://github.com/NVlabs/edm) from NVIDIA, used under [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0/) by NVIDIA under Copyright © 2022, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+Our work "Dual-FNO UNet: scale-robust diffusion model for zero-shot super-resolution image generation" is licensed under [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0/).
 
 Use this repo to train and sample DFU models. 
 
@@ -65,3 +67,15 @@ The relevant options here are:
 --data Path to images, can be a folder or zip file
 --dest File to save the reference statistics
 ```
+## License
+
+Shield: [![CC BY-NC-SA 4.0][cc-by-nc-sa-shield]][cc-by-nc-sa]
+
+This work is licensed under a
+[Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License][cc-by-nc-sa].
+
+[![CC BY-NC-SA 4.0][cc-by-nc-sa-image]][cc-by-nc-sa]
+
+[cc-by-nc-sa]: http://creativecommons.org/licenses/by-nc-sa/4.0/
+[cc-by-nc-sa-image]: https://licensebuttons.net/l/by-nc-sa/4.0/88x31.png
+[cc-by-nc-sa-shield]: https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg
