@@ -154,7 +154,6 @@ class SpectralConv2d(nn.Module):
 
     # Downsampling by truncating fourier modes?
     def forward(self, x, out_h=None, out_w=None):
-        # TODO(dahoas): Fix hack
         print("Spec conv input, weights: ", x.shape, self.weights1.shape) if self.verbose else None
         w1 = self.weights1.to(x.dtype)
         w2 = self.weights2.to(x.dtype)
@@ -180,7 +179,6 @@ class SpectralConv2d(nn.Module):
         #exit()
         print("out_ft shape: {}".format(out_ft.shape)) if self.verbose else None
         out_ft[:, :, :self.modes1, :self.modes2] = self.compl_mul2d(x_ft[:, :, :self.modes1, :self.modes2], w1)
-        # TODO(dahoas): Sampling from the end samples higher modes for larger images
         out_ft[:, :, -self.modes1:, :self.modes2] = self.compl_mul2d(x_ft[:, :, -self.modes1:, :self.modes2], w2)
 
         #Return to physical space
@@ -217,7 +215,7 @@ class DualConv(nn.Module):
         spectral_out = self.spectral_conv(x, out_h=out_h, out_w=out_w) if self.use_spectral else 0
         print("Spatial out nan: {}, Spectral out nan: {}".format(torch.any(spatial_out.isnan()) if self.use_spatial else False, torch.any(spectral_out.isnan()) if self.use_spectral else False)) if self.verbose else None
         print("Spatial out size: {}, Spectral out size: {}".format(spatial_out.shape if self.use_spatial else None, spectral_out.shape if self.use_spectral else None)) if self.verbose else None
-        # TODO(dahoas): Try other combination techniques
+        # TODO: Try other combination techniques
         return spatial_out + spectral_out
 
 #----------------------------------------------------------------------------
@@ -299,7 +297,6 @@ class DualUNetBlock(torch.nn.Module):
 
         self.skip = None
         if out_channels != in_channels or up or down:
-            # TODO(dahoas): This should probably be turned into a dual convolution
             kernel = 1 if resample_proj or out_channels!= in_channels else 0
             self.skip = Conv2d(in_channels=in_channels, out_channels=out_channels, kernel=kernel, up=up, down=down, resample_filter=resample_filter, **init)
 
@@ -452,7 +449,7 @@ class DualUNet(torch.nn.Module):
         self.dec = torch.nn.ModuleDict()
         for level, mult in reversed(list(enumerate(channel_mult))):
             modes1, modes2 = modes1_list[level], modes2_list[level]
-            #TODO(dahoas): Actually fourier layers end one level lower on encder vs. decoder because of upsampling
+            #TODO: Actually fourier layers end one level lower on encder vs. decoder because of upsampling
             # But actually this also true of the fourier layers in the encoder after down-sampling
             block_kwargs["use_spectral"] = level <= dual_block_thresh if mode=="dual" else block_kwargs["use_spectral"]
             if level == len(channel_mult) - 1:
