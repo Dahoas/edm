@@ -13,9 +13,9 @@ bash scripts/train/multi_res/run_dual.sh
 ```
 Some of the relevant training options are:
 ```
---mode Architecture mode, options are 'def' (Unet), 'fourier' (FNO Unet), 'dual' (Dual FNO Unet)
--d --data Path to the dataset to train on. It can be a folder or a zip file. 
---model_config_path Path to the config yml. See ./model_configs for examples
+--mode                Architecture mode, options are 'def' (Unet), 'fourier' (FNO Unet), 'dual' (Dual FNO Unet)
+-d --data             Path to the dataset to train on. It can be a folder or a zip file. 
+--model_config_path   Path to the config yml. See ./model_configs for examples
 ```
 
 For more options look at the train.py file. 
