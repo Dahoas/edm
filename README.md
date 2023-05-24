@@ -1,6 +1,8 @@
 # Dual-FNO UNet: scale-robust diffusion model for zero-shot super-resolution image generation
 
-This repo is adapted from [EDM repo](https://github.com/NVlabs/edm) from NVIDIA, used under [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License]{https://creativecommons.org/licenses/by-nc-sa/4.0/}. Our work "Dual-FNO UNet: scale-robust diffusion model for zero-shot super-resolution image generation" is licensed under [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License]{https://creativecommons.org/licenses/by-nc-sa/4.0/}.
+This repo is adapted from [EDM repo](https://github.com/NVlabs/edm) from NVIDIA, used under [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License]{https://creativecommons.org/licenses/by-nc-sa/4.0/} by NVIDIA under Copyright © 2022, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+Our work "Dual-FNO UNet: scale-robust diffusion model for zero-shot super-resolution image generation" is licensed under [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License]{https://creativecommons.org/licenses/by-nc-sa/4.0/}.
 
 Use this repo to train and sample DFU models. 
 
