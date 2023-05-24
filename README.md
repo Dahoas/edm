@@ -1,8 +1,6 @@
 # Dual-FNO UNet: scale-robust diffusion model for zero-shot super-resolution image generation
 
-This repo is adapted from [EDM repo](https://github.com/NVlabs/edm) from NVIDIA, used under CC BY 4.0. "Dual-FNO UNet: scale-robust diffusion model for zero-shot super-resolution image generation" i slicensed under CC BY 4.0. 
-
-This work, "90fied", is adapted from "Creative Commons 10th Birthday Celebration San Francisco" by Timothy Vollmer, used under CC BY 4.0. "90fied" is licensed under CC BY 4.0 by [Your name here].
+This repo is adapted from [EDM repo](https://github.com/NVlabs/edm) from NVIDIA, used under CC BY 4.0. Our work "Dual-FNO UNet: scale-robust diffusion model for zero-shot super-resolution image generation" is licensed under CC BY 4.0. 
 
 Use this repo to train and sample DFU models. 
 
@@ -13,8 +11,8 @@ bash scripts/train/multi_res/run_dual.sh
 ```
 Some of the relevant training options are:
 ```
---mode Architecture Mode options are 'def' (Unet), 'fourier' (FNO Unet), 'dual' (Dual FNO Unet)
--d -data Path to the dataset to train on. It can be a folder or a zip file. 
+--mode Architecture mode, options are 'def' (Unet), 'fourier' (FNO Unet), 'dual' (Dual FNO Unet)
+-d --data Path to the dataset to train on. It can be a folder or a zip file. 
 --model_config_path Path to the config yml. See ./model_configs for examples
 ```
 
