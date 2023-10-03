@@ -83,11 +83,8 @@ def main(network_pkl, image_path, eval_dir, sigma_min=0.002, sigma_max=80.,max_b
             bpd = bpd.detach().cpu().numpy().reshape(-1)
             bpds.extend(bpd)
             print("repeat: %d, batch: %d, mean bpd: %6f" % (repeat, batch_id, np.mean(np.asarray(bpds))))
-            # Save bits/dim to disk or Google Cloud Storage
-            with open(os.path.join(eval_dir,f"{repeat}_{batch_id}"), 'w') as f:
-                io_buffer = io.BytesIO()
-                np.savez_compressed(io_buffer, bpd)
-                f.write(io_buffer.getvalue())
+            # Save bits/dim to disk
+            np.savez_compressed(os.path.join(eval_dir,f"{repeat}_{batch_id}"), bpd)
 
 
     torch.distributed.barrier()
