@@ -123,7 +123,6 @@ def get_likelihood_fn(sigma_min, sigma_max, hutchinson_type='Rademacher',
         bpd = -(prior_logp + delta_logp) / np.log(2)
         N = np.prod(shape[1:])
         bpd = bpd / N
-        print(f"finished likelihood {bpd}")
         return bpd, z, nfe
 
     return likelihood_fn
