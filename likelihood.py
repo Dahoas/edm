@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from scipy import integrate
+import tqdm
 
 
 """Likelihood function, adapted from the repo by Yang-Song
@@ -31,7 +32,7 @@ def get_div_fn(fn):
     return div_fn
 
 
-def prior_logp(z, t):
+def prior_logdensity(z, t):
     shape = z.shape
     N = np.prod(shape[1:])
     logps = -N / 2. * np.log(2 * np.pi * t) - \
@@ -82,6 +83,7 @@ def get_likelihood_fn(sigma_min, sigma_max, hutchinson_type='Rademacher',
             probability flow ODE.
           nfe: An integer. The number of function evaluations used for running the black-box ODE solver.
         """
+        pbar = tqdm.tqdm(total=sigma_max,desc="Computing Likelihood")
         with torch.no_grad():
             shape = data.shape
             if hutchinson_type == 'Gaussian':
@@ -94,6 +96,9 @@ def get_likelihood_fn(sigma_min, sigma_max, hutchinson_type='Rademacher',
                     f"Hutchinson type {hutchinson_type} unknown.")
 
             def ode_func(t, x):
+                # Pass a progress bar if you want to see how its doing
+                pbar.set_description(f"Computing Likelihood t : {t}/{sigma_max}")
+
                 sample = from_flattened_numpy(
                     x[:-shape[0]], shape).to(data.device).type(torch.float32)
                 vec_t = torch.ones(sample.shape[0], device=sample.device) * t
@@ -102,20 +107,19 @@ def get_likelihood_fn(sigma_min, sigma_max, hutchinson_type='Rademacher',
                     div_fn(model, sample, vec_t, epsilon))
                 return np.concatenate([drift, logp_grad], axis=0)
 
-        # s_min = max(sigma_min, model.sigma_min)
-        # s_max = min(sigma_max, model.sigma_max)
         s_min = sigma_min
         s_max = sigma_max
         init = np.concatenate([to_flattened_numpy(data), np.zeros((shape[0],))], axis=0)
         solution = integrate.solve_ivp(
             ode_func, (s_min, s_max), init, rtol=rtol, atol=atol, method=method)
+        pbar.close()
         nfe = solution.nfev
         zp = solution.y[:, -1]
         z = from_flattened_numpy(
             zp[:-shape[0]], shape).to(data.device).type(torch.float32)
         delta_logp = from_flattened_numpy(
             zp[-shape[0]:], (shape[0],)).to(data.device).type(torch.float32)
-        prior_logp = prior_logp(z, s_max)
+        prior_logp = prior_logdensity(z, s_max)
         bpd = -(prior_logp + delta_logp) / np.log(2)
         N = np.prod(shape[1:])
         bpd = bpd / N

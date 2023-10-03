@@ -10,7 +10,7 @@
 """
 
 import os
-import re
+import io
 import click
 import tqdm
 import pickle
@@ -22,14 +22,19 @@ from torch_utils import distributed as dist
 from training import dataset
 import likelihood
 
+def scale(x):
+    return (x-128.)/127.5 
+
+
 @click.command()
 @click.option('--network', 'network_pkl',  help='Network pickle filename', metavar='PATH|URL',                      type=str, required=True)
 @click.option('--image_path', 'image_path',help='Path to dataset to evaluate nll in', metavar='PATH',               type=str, required=True)
+@click.option('--eval_dir', 'eval_dir',    help='Path to save nll statistics', metavar='PATH',                      type=str, required=True)
 
 @click.option('--sigma_min', 'sigma_min',  help='Lowest noise level  [default: varies]', metavar='FLOAT',           type=click.FloatRange(min=0, min_open=True))
 @click.option('--sigma_max', 'sigma_max',  help='Highest noise level  [default: varies]', metavar='FLOAT',          type=click.FloatRange(min=0, min_open=True))
 
-def main(network_pkl, image_path, sigma_min=0.002, sigma_max=80.,max_batch_size=64,
+def main(network_pkl, image_path, eval_dir, sigma_min=0.002, sigma_max=80.,max_batch_size=64,
     num_workers=3, prefetch_factor=2,device=torch.device('cuda')):
     """Generate random images using the techniques described in the paper
     "Elucidating the Design Space of Diffusion-Based Generative Models".
@@ -83,24 +88,19 @@ def main(network_pkl, image_path, sigma_min=0.002, sigma_max=80.,max_batch_size=
         print(f"Evaluating NLL for the {repeat} time")
         bpd_iter = iter(ds_bpd)  # pytype: disable=wrong-arg-types
         for batch_id in tqdm.tqdm(range(len(ds_bpd))):
-            print(batch_id)
             batch = next(bpd_iter)
-            # eval_batch = torch.from_numpy(batch['image']._numpy()).to(device).float()
             eval_batch = batch[0].to(device).float()
-            # eval_batch = eval_batch.permute(0, 3, 1, 2)
-            # eval_batch = scaler(eval_batch)
+            eval_batch = scale(eval_batch)
             bpd = likelihood_fn(net, eval_batch)[0]
             bpd = bpd.detach().cpu().numpy().reshape(-1)
             bpds.extend(bpd)
-            print("ckpt: %d, repeat: %d, batch: %d, mean bpd: %6f" % (repeat, batch_id, np.mean(np.asarray(bpds))))
+            print("repeat: %d, batch: %d, mean bpd: %6f" % (repeat, batch_id, np.mean(np.asarray(bpds))))
             bpd_round_id = batch_id + len(ds_bpd) * repeat
-            # # Save bits/dim to disk or Google Cloud Storage
-            # with tf.io.gfile.GFile(os.path.join(eval_dir,
-            #                                     f"{config.eval.bpd_dataset}_ckpt_{ckpt}_bpd_{bpd_round_id}.npz"),
-            #                         "wb") as fout:
-            #     io_buffer = io.BytesIO()
-            #     np.savez_compressed(io_buffer, bpd)
-            #     fout.write(io_buffer.getvalue())
+            # Save bits/dim to disk or Google Cloud Storage
+            with open(os.path.join(eval_dir,f"{repeat}_{batch_id}"), 'w') as f:
+                io_buffer = io.BytesIO()
+                np.savez_compressed(io_buffer, bpd)
+                f.write(io_buffer.getvalue())
 
 
     torch.distributed.barrier()
