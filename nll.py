@@ -36,20 +36,13 @@ def scale(x):
 
 def main(network_pkl, image_path, eval_dir, sigma_min=0.002, sigma_max=80.,max_batch_size=64,
     num_workers=3, prefetch_factor=2,device=torch.device('cuda')):
-    """Generate random images using the techniques described in the paper
-    "Elucidating the Design Space of Diffusion-Based Generative Models".
+    """Compute NLL
 
-    Examples:
+    Example:
 
-    \b
-    # Generate 64 images and save them as out/*.png
-    python generate.py --outdir=out --seeds=0-63 --batch=64 \\
-        --network=https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-cifar10-32x32-cond-vp.pkl
-
-    \b
-    # Generate 1024 images using 2 GPUs
-    torchrun --standalone --nproc_per_node=2 generate.py --outdir=out --seeds=0-999 --batch=64 \\
-        --network=https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-cifar10-32x32-cond-vp.pkl
+        torchrun --standalone --nproc_per_node=1 nll.py --network DFU/network-snapshot-100352.pkl \
+            --image_path DFU/ffhq-32x32-val.zip --sigma_min 0.002 --sigma_max 80 \
+            --eval_dir DFU/32/
     """
     dist.init()
 
@@ -69,12 +62,7 @@ def main(network_pkl, image_path, eval_dir, sigma_min=0.002, sigma_max=80.,max_b
     rank_batches = all_batches[dist.get_rank() :: dist.get_world_size()]
     data_loader = torch.utils.data.DataLoader(dataset_obj, batch_sampler=rank_batches, num_workers=num_workers, prefetch_factor=prefetch_factor)
 
-    # Create data loaders for likelihood evaluation. Only evaluate on uniformly dequantized data
-    # train_ds_bpd, eval_ds_bpd, _ = datasets.get_dataset(config,
-    #                                                     uniform_dequantization=True, evaluation=True)
-
     # Go over the dataset 5 times when computing likelihood on the test dataset
-    # ds_bpd = eval_ds_bpd
     ds_bpd = data_loader
     bpd_num_repeats = 5
 
@@ -95,7 +83,6 @@ def main(network_pkl, image_path, eval_dir, sigma_min=0.002, sigma_max=80.,max_b
             bpd = bpd.detach().cpu().numpy().reshape(-1)
             bpds.extend(bpd)
             print("repeat: %d, batch: %d, mean bpd: %6f" % (repeat, batch_id, np.mean(np.asarray(bpds))))
-            bpd_round_id = batch_id + len(ds_bpd) * repeat
             # Save bits/dim to disk or Google Cloud Storage
             with open(os.path.join(eval_dir,f"{repeat}_{batch_id}"), 'w') as f:
                 io_buffer = io.BytesIO()
